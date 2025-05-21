@@ -70,13 +70,15 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
     *   **Completed:** Implemented caching for processed outputs with automatic pruning.
     *   **Details:** Created cache.rs and cache_prune.rs modules with comprehensive features including hit/miss tracking, size management, and file-based storage of processing results.
 
-- [ ] **Library API: Serde Structs for JSON Output**
-    *   **Task:** Provide Serde structs for common Grobid outputs (header, citations) and functions to deserialize into them.
-    *   **Why / Benefit:** Improves DX for Rust consumers; type-safe access to data.
+- [ ] **Library API: Serde Structs for JSON Output** (See [JSON Implementation Plan](docs/JSON_IMPLEMENTATION.md))
+    *   **Task:** Provide a modular system for Grobid data using Serde structs with clear API boundaries. 
+    *   **Why / Benefit:** Improves DX for Rust consumers; type-safe access to data with proper separation of concerns.
     *   **Implementation:**
-        *   Define Rust structs (e.g., `HeaderMetadata`, `Author`).
-        *   Use Grobid's built-in JSON converters if available (e.g., `TEIConverter` on JVM side, or `HeaderResult.builder().withJson(true)`).
-        *   Expose functions like `process_header_json(pdf_path) -> Result<HeaderMetadata, GrobidError>`.
+        *   **Phase 1:** Define comprehensive Serde structs in `src/models/` directory
+        *   **Phase 2:** Create TEI-to-struct converters in `src/converters/` directory
+        *   **Phase 3:** Expose public API functions like `process_header_json()` in library
+        *   **Phase 4:** Update CLI to use the library's JSON functionality
+        *   **Phase 5:** Add proper tests and documentation
 
 - [x] **Observability: Logging Hooks (`tracing`)**
     *   **Completed:** Integrated tracing crate for structured logging in cache and other modules.
