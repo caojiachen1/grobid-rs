@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use build_modules::{
     build_ops::build_and_stage_grobid,
     common::{
-        print_cargo_warning, FORCE_GROBID_REBUILD_ENV_VAR, GROBID_DIR_NAME_PREFIX,
+        print_cargo_info, print_cargo_warning, FORCE_GROBID_REBUILD_ENV_VAR, GROBID_DIR_NAME_PREFIX,
         GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX, GROBID_ONEJAR_NAME_SUFFIX,
         GROBID_RS_ASSETS_PATH_ENV_VAR, GROBID_VERSION, JLINK_RUNTIME_SUBDIR_NAME,
         JRE_SUCCESS_MARKER_FILE,
@@ -46,7 +46,7 @@ fn check_for_vendored_files() -> Option<PathBuf> {
 
     if (jar_path.exists() || jar_zst_path.exists()) && grobid_home_path.exists() && jre_dir.exists()
     {
-        print_cargo_warning("Found vendored Grobid files");
+        print_cargo_info("Found vendored Grobid files");
         return Some(vendor_dir);
     }
 
@@ -55,7 +55,7 @@ fn check_for_vendored_files() -> Option<PathBuf> {
 
 /// Copy vendored files to the deployment directory
 fn use_vendored_files(vendor_dir: &Path, deployment_dir: &Path) -> Result<()> {
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Using vendored files from {} to {}",
         vendor_dir.display(),
         deployment_dir.display()
@@ -87,7 +87,7 @@ fn use_vendored_files(vendor_dir: &Path, deployment_dir: &Path) -> Result<()> {
         // Check for compressed version
         let compressed_jar_path = vendor_grobid_dir.join(format!("{}.zst", jar_name));
         if compressed_jar_path.exists() {
-            print_cargo_warning(&format!(
+            print_cargo_info(&format!(
                 "Decompressing JAR from {} to {}",
                 compressed_jar_path.display(),
                 target_jar_path.display()
@@ -182,7 +182,7 @@ fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<()> {
             if file_name.ends_with(".zst") {
                 // This is a compressed file, decompress it
                 let target_path = dst_path.with_file_name(file_name.trim_end_matches(".zst"));
-                print_cargo_warning(&format!(
+                print_cargo_info(&format!(
                     "Decompressing {} to {}",
                     src_path.display(),
                     target_path.display()
@@ -214,11 +214,11 @@ fn decompress_zstd_file(compressed_path: &PathBuf, target_path: &PathBuf) -> Res
 
         match result {
             Ok(output) if output.status.success() => {
-                print_cargo_warning("Successfully decompressed using zstd command");
+                print_cargo_info("Successfully decompressed using zstd command");
                 return Ok(());
             }
             _ => {
-                print_cargo_warning(
+                print_cargo_info(
                     "zstd command failed or not available, using internal decompression",
                 );
                 // Fall back to internal implementation
@@ -250,7 +250,7 @@ fn main() -> Result<()> {
 
     // Load .env if present
     dotenv().ok();
-    print_cargo_warning("Starting Grobid-RS modular build script");
+    print_cargo_info("Starting Grobid-RS modular build script");
 
     // Determine assets directory (override via env or default to target/grobid_assets)
     let assets_dir = match env::var(GROBID_RS_ASSETS_PATH_ENV_VAR) {
@@ -273,7 +273,7 @@ fn main() -> Result<()> {
     // Force clean if requested
     let force_clean = env::var(FORCE_GROBID_REBUILD_ENV_VAR).unwrap_or_default() == "true";
     if force_clean {
-        print_cargo_warning("FORCE_GROBID_REBUILD is set to true, removing cached Grobid deployment and source directories");
+        print_cargo_info("FORCE_GROBID_REBUILD is set to true, removing cached Grobid deployment and source directories");
         // Remove the entire grobid-<version> directory, which includes source, deployment, and runtime.
         // The ZIP file itself is directly under assets_dir and will be preserved.
         let grobid_version_dir =
@@ -298,12 +298,12 @@ fn main() -> Result<()> {
 
         // If runtime doesn't exist or no marker, we'll need to rebuild it
         if !runtime_dir.exists() || !jre_marker.exists() {
-            print_cargo_warning("JRE runtime directory missing or incomplete, will rebuild");
+            print_cargo_info("JRE runtime directory missing or incomplete, will rebuild");
         }
     }
     // Ensure the assets directory exists (retain any existing ZIP files)
     fs::create_dir_all(&assets_dir).context("Failed to create assets directory")?;
-    print_cargo_warning(&format!("Assets directory: {}", assets_dir.display()));
+    print_cargo_info(&format!("Assets directory: {}", assets_dir.display()));
 
     // Locate JAVA_HOME
     let java_home = locate_java_home()?;
@@ -371,12 +371,12 @@ fn main() -> Result<()> {
             })?;
         }
         let jlink_result = ensure_jlink_runtime(&java_home, &deployment_dir)?;
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "JRE runtime created at {}",
             jlink_result.display()
         ));
     } else {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Using existing JRE runtime at {}",
             jlink_dir.display()
         ));

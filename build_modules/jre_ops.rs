@@ -1,5 +1,5 @@
 use crate::build_modules::common::{
-    bail, fs, print_cargo_warning, Context, File, Path, PathBuf, Result, JAKARTA_JLINK_MODULES,
+    bail, fs, print_cargo_info, print_cargo_warning, Context, File, Path, PathBuf, Result, JAKARTA_JLINK_MODULES,
     JLINK_RUNTIME_SUBDIR_NAME, JRE_SUCCESS_MARKER_FILE,
 };
 use crate::build_modules::fingerprint;
@@ -10,7 +10,7 @@ fn build_jlink_runtime(
     jlink_output_dir: &Path,
     _target_grobid_deployment_dir: &Path,
 ) -> Result<()> {
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Building jlink runtime at {} using JAVA_HOME={}",
         jlink_output_dir.display(),
         java_home.display()
@@ -75,7 +75,7 @@ fn build_jlink_runtime(
     run_command(&jlink_exe_path, &args, java_home, None)
         .with_context(|| "jlink execution failed.")?;
 
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "jlink runtime built successfully at: {}",
         jlink_output_dir.display()
     ));
@@ -104,7 +104,7 @@ pub fn ensure_jlink_runtime(
         };
 
     if up_to_date {
-        print_cargo_warning("JRE runtime unchanged – skipping jlink build");
+        print_cargo_info("JRE runtime unchanged – skipping jlink build");
     } else {
         let reason = if !jlink_runtime_dir.exists() {
             "JRE directory not found"
@@ -114,7 +114,7 @@ pub fn ensure_jlink_runtime(
             "JRE fingerprint changed"
         };
 
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "jlink JRE rebuild needed at {} (reason: {}). Will build JRE.",
             jlink_runtime_dir.display(),
             reason
@@ -139,7 +139,7 @@ pub fn ensure_jlink_runtime(
             format!("Failed to write fingerprint data to {}", fp_path.display())
         })?;
 
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "jlink JRE successfully built at: {}",
             jlink_runtime_dir.display()
         ));

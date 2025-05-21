@@ -1,5 +1,5 @@
 use crate::build_modules::common::{
-    bail, copy_dir_contents, fs, print_cargo_warning, Context, DirCopyOptions, File, FsExtraError,
+    bail, copy_dir_contents, fs, print_cargo_info, print_cargo_warning, Context, DirCopyOptions, File, FsExtraError,
     Path, Result, BUILD_SUCCESS_MARKER_FILE, GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX,
     GROBID_ONEJAR_NAME_SUFFIX, GROBID_RELEASE_TAG, GROBID_VERSION,
 };
@@ -18,7 +18,7 @@ fn run_gradle_build(grobid_source_root: &Path, java_home: &Path) -> Result<()> {
         bail!("gradlew script not found at {}. Please ensure the Grobid source is correctly extracted and contains the Gradle wrapper.", gradlew_path.display());
     }
 
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Starting Gradle build in {} using JAVA_HOME={}",
         grobid_source_root.display(),
         java_home.display()
@@ -26,7 +26,7 @@ fn run_gradle_build(grobid_source_root: &Path, java_home: &Path) -> Result<()> {
 
     // Disable Gradle Daemon (--no-daemon) to avoid persistent locks. Clean first, then build tasks.
     let clean_task = "clean";
-    print_cargo_warning(&format!("Running Gradle task: {clean_task}"));
+    print_cargo_info(&format!("Running Gradle task: {clean_task}"));
     run_command(
         &gradlew_path,
         &["--no-daemon", clean_task],
@@ -37,7 +37,7 @@ fn run_gradle_build(grobid_source_root: &Path, java_home: &Path) -> Result<()> {
 
     let build_tasks = vec![":grobid-core:shadowJar", "assemble"]; // assemble builds grobid-home resources
     for task in build_tasks {
-        print_cargo_warning(&format!("Running Gradle task: {task}"));
+        print_cargo_info(&format!("Running Gradle task: {task}"));
         run_command(
             &gradlew_path,
             &["--no-daemon", task],
@@ -47,7 +47,7 @@ fn run_gradle_build(grobid_source_root: &Path, java_home: &Path) -> Result<()> {
         .with_context(|| format!("Gradle task {task} failed."))?;
     }
 
-    print_cargo_warning("Gradle build tasks completed successfully.");
+    print_cargo_info("Gradle build tasks completed successfully.");
     Ok(())
 }
 
@@ -55,7 +55,7 @@ fn copy_grobid_artifacts(
     grobid_source_root: &Path,
     target_grobid_deployment_dir: &Path,
 ) -> Result<()> {
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Copying Grobid artifacts from {} to {}",
         grobid_source_root.display(),
         target_grobid_deployment_dir.display()
@@ -88,7 +88,7 @@ fn copy_grobid_artifacts(
             onejar_source_path.display()
         );
     }
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Copying JAR: {} to {}",
         onejar_source_path.display(),
         onejar_target_path.display()
@@ -127,7 +127,7 @@ fn copy_grobid_artifacts(
         )
     })?;
 
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Copying grobid-home contents from {} to {}",
         grobid_home_source_path.display(),
         grobid_home_target_path.display()
@@ -139,7 +139,7 @@ fn copy_grobid_artifacts(
         |e: FsExtraError| anyhow::anyhow!("Failed to copy grobid-home contents: {}", e.to_string()),
     )?;
 
-    print_cargo_warning("Grobid artifacts copied successfully.");
+    print_cargo_info("Grobid artifacts copied successfully.");
     Ok(())
 }
 
@@ -166,9 +166,9 @@ pub fn build_and_stage_grobid(
         });
 
     if up_to_date {
-        print_cargo_warning("Grobid artefacts unchanged – skipping Gradle build");
+        print_cargo_info("Grobid artefacts unchanged – skipping Gradle build");
     } else {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Grobid artifacts not found or build incomplete at {}. Will build and stage.",
             target_grobid_deployment_dir.display()
         ));
@@ -200,7 +200,7 @@ pub fn build_and_stage_grobid(
             format!("Failed to write fingerprint data to {}", fp_path.display())
         })?;
 
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Grobid successfully built and artifacts staged at: {}",
             target_grobid_deployment_dir.display()
         ));

@@ -60,6 +60,7 @@ pub const JAKARTA_JLINK_MODULES: &str = "java.base,java.logging,java.xml,jdk.uns
 pub const CARGO_RERUN_IF_CHANGED_ENV_VAR: &str = "CARGO_RERUN_IF_CHANGED";
 pub const CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR: &str = "CARGO_RERUN_IF_ENV_CHANGED";
 pub const CARGO_WARNING_PREFIX: &str = "cargo:warning=";
+pub const CARGO_INFO_PREFIX: &str = "cargo:info=";
 pub const CARGO_LINK_SEARCH_NATIVE_PREFIX: &str = "cargo:rustc-link-search=native=";
 pub const CARGO_LINK_LIB_STATIC_PREFIX: &str = "cargo:rustc-link-lib=static=";
 pub const CARGO_LINK_LIB_DYLIB_PREFIX: &str = "cargo:rustc-link-lib=dylib=";
@@ -68,4 +69,12 @@ pub const CARGO_LINK_LIB_DYLIB_PREFIX: &str = "cargo:rustc-link-lib=dylib=";
 
 pub fn print_cargo_warning(message: &str) {
     println!("{CARGO_WARNING_PREFIX}{message}");
+}
+
+/// Print an info message during the build process
+/// 
+/// This function prints a message prefixed with "cargo:info=" which will be 
+/// visible in build output but won't be treated as a warning.
+pub fn print_cargo_info(message: &str) {
+    println!("{CARGO_INFO_PREFIX}{message}");
 }

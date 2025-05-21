@@ -2,7 +2,7 @@
 //! input that should trigger a rebuild (Gradle sources, JDK, build.rs).
 
 use crate::build_modules::common::{
-    env, fs, io, print_cargo_warning, Context, Digest, File, Path, PathBuf, Result, Sha256,
+    env, fs, io, print_cargo_info, print_cargo_warning, Context, Digest, File, Path, PathBuf, Result, Sha256,
     GROBID_VERSION, GROBID_ZIP_SHA256, JAKARTA_JLINK_MODULES,
 };
 use serde::{Deserialize, Serialize};
@@ -30,9 +30,9 @@ impl Fingerprint {
                 format!("Failed to read gradle wrapper at {}", gradlew.display())
             })?;
         } else if gradlew.as_os_str().is_empty() {
-            print_cargo_warning("No Gradle wrapper path provided, using empty hash");
+            print_cargo_info("No Gradle wrapper path provided, using empty hash");
         } else {
-            print_cargo_warning(&format!(
+            print_cargo_info(&format!(
                 "Gradle wrapper not found at {}, using empty hash",
                 gradlew.display()
             ));
@@ -76,7 +76,7 @@ impl Fingerprint {
 
             duration.as_secs()
         } else {
-            print_cargo_warning("build.rs not found, using 0 as modification time");
+            print_cargo_info("build.rs not found, using 0 as modification time");
             0
         };
 

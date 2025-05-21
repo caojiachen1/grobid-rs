@@ -1,5 +1,5 @@
 use crate::build_modules::common::{
-    bail, env, print_cargo_warning, Path, PathBuf, Result, CARGO_LINK_LIB_DYLIB_PREFIX,
+    bail, env, print_cargo_info, print_cargo_warning, Path, PathBuf, Result, CARGO_LINK_LIB_DYLIB_PREFIX,
     CARGO_LINK_LIB_STATIC_PREFIX, CARGO_LINK_SEARCH_NATIVE_PREFIX, CARGO_RERUN_IF_CHANGED_ENV_VAR,
     CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR, FORCE_GROBID_REBUILD_ENV_VAR, GROBID_HOME_DIR_NAME,
     GROBID_JAR_NAME_PREFIX, GROBID_ONEJAR_NAME_SUFFIX, GROBID_RS_ASSETS_PATH_ENV_VAR,
@@ -12,7 +12,7 @@ pub fn setup_jni_linkage(
     jlink_runtime_path: &Path,
     target_grobid_deployment_dir: &Path,
 ) -> Result<()> {
-    print_cargo_warning("Configuring JNI linkage...");
+    print_cargo_info("Configuring JNI linkage...");
 
     // --- JNI Library Path ---
     let jni_lib_path_from_jlink = jlink_runtime_path.join("lib/server"); // For jlinked runtime
@@ -23,13 +23,13 @@ pub fn setup_jni_linkage(
         || jni_lib_path_from_jlink.join("libjvm.so").exists()
         || jni_lib_path_from_jlink.join("jvm.dll").exists()
     {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Using JNI lib path from jlink runtime: {}",
             jni_lib_path_from_jlink.display()
         ));
         jni_lib_path_from_jlink
     } else if jni_lib_path_from_jdk.exists() {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Using JNI lib path from JDK: {}",
             jni_lib_path_from_jdk.display()
         ));
@@ -64,7 +64,7 @@ pub fn setup_jni_linkage(
             );
         }
     } else {
-        print_cargo_warning("Warning: JNI include directory not found. This might be an issue if compiling JNI C code.");
+        print_cargo_warning("JNI include directory not found. This might be an issue if compiling JNI C code.");
     }
 
     // --- Dynamic Library Linking ---
@@ -85,7 +85,7 @@ pub fn setup_jni_linkage(
                 );
                 println!("{CARGO_LINK_LIB_STATIC_PREFIX}jvm"); // Link against the import library
             } else {
-                print_cargo_warning("Warning: jvm.lib not found in JDK lib directory. Relying on linker to find jvm.dll via server path.");
+                print_cargo_warning("jvm.lib not found in JDK lib directory. Relying on linker to find jvm.dll via server path.");
                 // If no jvm.lib, still try to hint for dylib, though it's less common to specify this for Windows DLLs directly.
                 println!("{CARGO_LINK_LIB_DYLIB_PREFIX}jvm");
             }
@@ -130,15 +130,15 @@ pub fn setup_jni_linkage(
         jlink_runtime_path.display()
     );
 
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "GROBID_JAR_PATH set to: {}",
         final_jar_path.display()
     ));
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "GROBID_HOME_PATH set to: {}",
         final_grobid_home_path.display()
     ));
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "JLINK_RUNTIME_PATH set to: {}",
         jlink_runtime_path.display()
     ));
@@ -151,6 +151,6 @@ pub fn setup_jni_linkage(
     // Potentially add rerun if changed for files in build_modules/*, but that can get complex.
     // For now, changing build.rs itself (e.g. by adding a comment) will trigger a rerun.
 
-    print_cargo_warning("JNI linkage configuration complete.");
+    print_cargo_info("JNI linkage configuration complete.");
     Ok(())
 }

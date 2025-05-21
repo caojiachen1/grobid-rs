@@ -1,4 +1,10 @@
-use crate::build_modules::common::*;
+use crate::build_modules::common::{
+    bail, env, fs, io, print_cargo_info, print_cargo_warning, Context, Client, Digest, 
+    Duration, EXTRACTION_SUCCESS_MARKER_FILE, File, GROBID_DIR_NAME_PREFIX, GROBID_DOWNLOAD_URL_PREFIX,
+    GROBID_SOURCE_SUBDIR_NAME, GROBID_VERSION, GROBID_ZIP_SHA256, IndexedParallelIterator, 
+    IntoParallelIterator, OpenOptions, ParallelIterator, Path, PathBuf, ProgressBar, ProgressState, 
+    ProgressStyle, Read, Result, Seek, SeekFrom, StatusCode, Write, ZipArchive, header
+};
 use crate::build_modules::utils::verify_sha256;
 use anyhow::anyhow;
 use bytes::Buf;
@@ -8,7 +14,7 @@ use std::sync::Mutex;
 fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
     // If file exists & checksum matches → skip download
     if to.exists() && verify_sha256(to, expect_sha256).is_ok() {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "ZIP already present and checksum OK ({})",
             to.display()
         ));
@@ -22,20 +28,43 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
         .context("building reqwest client")?;
 
     // HEAD to get size & range support
-    let head = client.head(url).send().context("HEAD request")?;
-    if !head.status().is_success() {
-        bail!("HEAD {} returned {}", url, head.status());
-    }
-    let len: u64 = head
-        .headers()
-        .get(header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| anyhow!("content-length missing"))?;
-    let ranges_ok = head.headers().get(header::ACCEPT_RANGES).is_some();
-
-    print_cargo_warning(&format!(
-        "Downloading {} ({} MiB, ranges {})",
+    let head_result = client.head(url).send();
+    
+    // Check if HEAD request was successful
+    let (len, ranges_ok) = match head_result {
+        Ok(head) => {
+            if !head.status().is_success() {
+                print_cargo_info(&format!(
+                    "HEAD request to {} returned non-success status: {}. Using fallback download method.",
+                    url, head.status()
+                ));
+                return download_file(url, to);
+            }
+            
+            // Try to get content length
+            let content_length = head
+                .headers()
+                .get(header::CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
+                
+            if content_length.is_none() {
+                print_cargo_info(&format!(
+                    "Content-Length header missing from {}. Using fallback download method.",
+                    url
+                ));
+                return download_file(url, to);
+            }
+            
+            let ranges_supported = head.headers().get(header::ACCEPT_RANGES).is_some();
+            (content_length.unwrap(), ranges_supported)
+        },
+        Err(e) => {
+            print_cargo_info(&format!(
+                "HEAD request to {} failed: {}. Using fallback download method.",
+                url, e
+            ));
+            return download_file(url, to{} ({} MiB, ranges {})",
         url,
         len / 1_048_576,
         if ranges_ok { "YES" } else { "NO" }
@@ -62,11 +91,11 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
         )
         .unwrap(),
     );
-    pb.set_message("Downloading Grobid ZIP");
+    pb.set_message("Downloading Grobid ZIP ");
 
     if !ranges_ok || len < 50 * 1024 * 1024 {
         // fallback single stream
-        let mut resp = client.get(url).send().context("stream GET")?;
+        let mut resp = client.get(url).send().context("stream GET ")?;
         let mut writer = pb.wrap_write(file);
         std::io::copy(&mut resp, &mut writer)?;
     } else {
@@ -115,7 +144,7 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
 
     // Verify checksum
     if verify_sha256(to, expect_sha256).is_err() {
-        bail!("SHA-256 mismatch after download");
+        bail!("SHA-256 mismatch after download ");
     }
     Ok(())
 }
@@ -135,7 +164,7 @@ fn download_file(url: &str, to: &Path) -> Result<()> {
         .connect_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(1800)) // 30 minutes overall timeout for large files
         .build()
-        .context("Failed to build reqwest client")?;
+        .context("Failed to build reqwest client ")?;
 
     let response = client
         .get(url)
@@ -189,7 +218,7 @@ fn download_file(url: &str, to: &Path) -> Result<()> {
 }
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
-    print_cargo_warning(&format!(
+    print_cargo_info(&format!(
         "Extracting ZIP {} to {}",
         zip_path.display(),
         target_dir.display()
@@ -212,7 +241,7 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
     let pb_extract = ProgressBar::new(archive.len() as u64);
     pb_extract.set_style(
         ProgressStyle::with_template(
-            "{msg} [{elapsed_precise}] [{wide_bar:.green/yellow}] {pos}/{len} files",
+            "{msg} [{elapsed_precise}] [{wide_bar:.green/yellow}] {pos}/{len} files ",
         )
         .unwrap_or_else(|_| ProgressStyle::default_bar())
         .progress_chars("==>"),
@@ -229,7 +258,7 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
         let outpath = match entry.enclosed_name() {
             Some(path) => target_dir.join(path),
             None => {
-                print_cargo_warning(&format!(
+                print_cargo_info(&format!(
                     "Skipping entry with invalid path in zip: {}",
                     entry.name()
                 ));
@@ -303,7 +332,7 @@ pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
 
     // If we've already successfully extracted, skip download/extract
     if success_marker.exists() {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Found existing extracted Grobid source at {} (marker present).",
             grobid_source_checkout_dir.display()
         ));
@@ -322,7 +351,7 @@ pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
     }
 
     if !success_marker.exists() {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Grobid source not found or extraction incomplete at {}. Will download and extract.",
             grobid_source_checkout_dir.display()
         ));
@@ -337,11 +366,11 @@ pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
         }
 
         // Download the GROBID source archive
-        let zip_file_name = format!("{}.zip", GROBID_VERSION);
+        let zip_file_name = format!("{}.zip ", GROBID_VERSION);
         let grobid_zip_path = assets_dir.join(&zip_file_name);
-        let download_url = format!("{}{}.zip", GROBID_DOWNLOAD_URL_PREFIX, GROBID_VERSION);
+        let download_url = format!("{}{}.zip ", GROBID_DOWNLOAD_URL_PREFIX, GROBID_VERSION);
 
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "[Debug source_ops] Checking for ZIP: {}. Exists? {}",
             grobid_zip_path.display(),
             grobid_zip_path.exists()
@@ -371,7 +400,7 @@ pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
         };
         Ok(root)
     } else {
-        print_cargo_warning(&format!(
+        print_cargo_info(&format!(
             "Found existing successfully extracted Grobid source at: {}",
             grobid_source_checkout_dir.display()
         ));
@@ -379,10 +408,11 @@ pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
         let actual_grobid_root =
             grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION));
         if !actual_grobid_root.exists() {
-            bail!(
-                "Extracted Grobid source, but the expected project root {} does not exist.",
+            let msg = format!(
+                "Extracted Grobid source, but the expected project root {} does not exist",
                 actual_grobid_root.display()
             );
+            bail!("{}", msg);
         }
         Ok(actual_grobid_root)
     }
