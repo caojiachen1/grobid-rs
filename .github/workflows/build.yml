@@ -162,9 +162,13 @@ jobs:
       # ----------------------------------------------------------
       #  Build → unit tests → integration tests (fast-fail order)
       # ----------------------------------------------------------
-      - name: Build (release) (Unix)
-        if: runner.os != 'Windows'
+      - name: Build (release) (Linux)
+        if: runner.os == 'Linux'
         run: cargo build --release --locked -j $(nproc) --target ${{ matrix.target }} --features cli
+        
+      - name: Build (release) (macOS)
+        if: runner.os == 'macOS'
+        run: cargo build --release --locked -j $(sysctl -n hw.ncpu) --target ${{ matrix.target }} --features cli
         
       - name: Build (release) (Windows)
         if: runner.os == 'Windows'
@@ -175,9 +179,13 @@ jobs:
       - uses: taiki-e/install-action@nextest
       
       # Run tests with nextest (much faster than standard cargo test)
-      - name: Unit + integration tests (Unix)
-        if: runner.os != 'Windows'
+      - name: Unit + integration tests (Linux)
+        if: runner.os == 'Linux'
         run: cargo nextest run --release -j $(nproc) --target ${{ matrix.target }}
+        
+      - name: Unit + integration tests (macOS)
+        if: runner.os == 'macOS'
+        run: cargo nextest run --release -j $(sysctl -n hw.ncpu) --target ${{ matrix.target }}
         
       - name: Unit + integration tests (Windows)
         if: runner.os == 'Windows'
