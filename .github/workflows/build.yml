@@ -1,4 +1,5 @@
 name: build
+
 on: [push, pull_request]
 
 # Cancel in-progress runs for the same branch
@@ -9,13 +10,12 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   GROBID_VERSION: '0.8.2'
-  RUSTC_WRAPPER: sccache
 
 jobs:
   # Fast check job for PRs
   check:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -23,19 +23,12 @@ jobs:
         with:
           components: clippy, rustfmt
       
-      - name: Install sccache
-        run: |
-          SCCACHE_VERSION=0.5.3
-          curl -L "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv sccache-*/sccache /usr/local/bin/sccache
-      
-      - name: Cache Cargo registry and sccache
+      - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cache/sccache
           key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-check-
@@ -49,8 +42,9 @@ jobs:
       - name: Check compilation
         run: cargo check
 
-  # Main build job
-  build:
+  # Main build job for pushes (all platforms)
+  build_push:
+    if: ${{ github.event_name == 'push' }}
     strategy:
       matrix:
         include:
@@ -61,8 +55,13 @@ jobs:
           - os: windows-latest # win‑x64
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
-    # Skip macOS and Windows on PRs - only run Ubuntu
-    if: ${{ github.event_name != 'pull_request' || matrix.os == 'ubuntu-latest' }}
+    
+  # Build job for PRs (Ubuntu only)
+  build_pr:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    env:
+      target: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
 
@@ -82,43 +81,17 @@ jobs:
       # Install Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-           
-      # Install and configure sccache (all platforms)
-      - name: Install sccache (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          SCCACHE_VERSION=0.5.3
-          curl -L "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv sccache-*/sccache /usr/local/bin/sccache
+          targets: ${{ matrix.target || env.target }}
           
-      - name: Install sccache (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          SCCACHE_VERSION=0.5.3
-          curl -L "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz" | tar xz
-          sudo mv sccache-*/sccache /usr/local/bin/sccache
-          
-      - name: Install sccache (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          $SCCACHE_VERSION = "0.5.3"
-          Invoke-WebRequest -OutFile sccache.tar.gz -Uri "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-pc-windows-msvc.tar.gz"
-          tar -xf sccache.tar.gz
-          Add-Content $env:GITHUB_PATH "$pwd\sccache-*"
-          
-      # Set up extensive caching
-      - name: Cache Cargo registry and sccache
+      # Set up cargo cache
+      - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cache/sccache
-            ~/Library/Caches/Mozilla.sccache
-            %LOCALAPPDATA%\Mozilla\sccache
             target
-          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ matrix.target || env.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-${{ matrix.target }}-
             ${{ runner.os }}-cargo-
@@ -129,15 +102,15 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '11'
-          cache: 'maven'  # Cache Maven dependencies
+          cache: 'maven'
       
       # Prepare vendor directory structure
       - name: Create vendor directories (Unix)
-        if: runner.os != 'Windows'
+        if: ${{ runner.os != 'Windows' }}
         run: mkdir -p vendor/grobid
       
       - name: Create vendor directories (Windows)
-        if: runner.os == 'Windows'
+        if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
           if (-not (Test-Path vendor)) { New-Item -Path vendor -ItemType Directory }
@@ -145,15 +118,15 @@ jobs:
            
       # Install zstd (needed for decompression)
       - name: Install zstd (macOS)
-        if: runner.os == 'macOS'
+        if: ${{ runner.os == 'macOS' }}
         run: brew install zstd
         
       - name: Install zstd (Ubuntu)
-        if: runner.os == 'Linux'
+        if: ${{ runner.os == 'Linux' }}
         run: sudo apt-get install -y zstd
         
       - name: Install zstd (Windows)
-        if: runner.os == 'Windows'
+        if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
           $ZSTD_VERSION = "1.5.5"
@@ -166,20 +139,20 @@ jobs:
       
       # Build crate only if source code has changed
       - name: cargo build
-        if: steps.changes.outputs.src == 'true'
-        run: cargo build --release --target ${{ matrix.target }} --features cli --locked
+        if: ${{ steps.changes.outputs.src == 'true' }}
+        run: cargo build --release --target ${{ matrix.target || env.target }} --features cli --locked
         
       # Skip build if source hasn't changed (for documentation-only PRs)
       - name: Skip build
-        if: steps.changes.outputs.src != 'true'
+        if: ${{ steps.changes.outputs.src != 'true' }}
         run: echo "Skipping build - no source changes detected"
 
       # Run fast tests first
       - name: Run unit tests
-        if: steps.changes.outputs.src == 'true'
-        run: cargo test --lib --bins --target ${{ matrix.target }} -- --nocapture
+        if: ${{ steps.changes.outputs.src == 'true' }}
+        run: cargo test --lib --bins --target ${{ matrix.target || env.target }} -- --nocapture
 
       # Run integration tests separately
       - name: Run integration tests
-        if: steps.changes.outputs.src == 'true'
-        run: cargo test --test="*" --target ${{ matrix.target }} -- --nocapture
+        if: ${{ steps.changes.outputs.src == 'true' }}
+        run: cargo test --test="*" --target ${{ matrix.target || env.target }} -- --nocapture
