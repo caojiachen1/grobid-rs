@@ -201,19 +201,20 @@ The build system includes several optimizations:
 
 ### Git Hooks
 
-We recommend setting up git hooks to automatically format code with rustfmt before commits:
+We recommend setting up git hooks to automatically format code and run clippy checks before commits:
 
 ```bash
-# Install rustfmt if you don't have it
-rustup component add rustfmt
+# Run the included installation script (recommended)
+./scripts/install-hooks.sh
 
-# Set up a pre-commit hook to run rustfmt
-mkdir -p .git/hooks
-curl -o .git/hooks/pre-commit https://raw.githubusercontent.com/agustif/grobid-rs/master/scripts/pre-commit.sh
+# Or manually install the pre-commit hook
+cp scripts/pre-commit.sh .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
-See [Git Hooks Documentation](docs/GIT_HOOKS.md) for more options and advanced configurations.
+The pre-commit hook will automatically format your Rust code with `rustfmt` and check for issues with `clippy` before each commit.
+
+See [Git Hooks Documentation](docs/GIT_HOOKS.md) for more details and advanced configurations.
 
 ### Vendoring Dependencies
 
