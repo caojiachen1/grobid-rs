@@ -1,4 +1,7 @@
-use crate::build_modules::common::*;
+use crate::build_modules::common::{
+    bail, fs, print_cargo_warning, Context, File, Path, PathBuf, Result, JAKARTA_JLINK_MODULES,
+    JLINK_RUNTIME_SUBDIR_NAME, JRE_SUCCESS_MARKER_FILE,
+};
 use crate::build_modules::fingerprint;
 use crate::build_modules::utils::run_command;
 
@@ -100,7 +103,9 @@ pub fn ensure_jlink_runtime(
             Err(_) => false,
         };
 
-    if !up_to_date {
+    if up_to_date {
+        print_cargo_warning("JRE runtime unchanged – skipping jlink build");
+    } else {
         let reason = if !jlink_runtime_dir.exists() {
             "JRE directory not found"
         } else if !success_marker.exists() {
@@ -138,8 +143,6 @@ pub fn ensure_jlink_runtime(
             "jlink JRE successfully built at: {}",
             jlink_runtime_dir.display()
         ));
-    } else {
-        print_cargo_warning("JRE runtime unchanged – skipping jlink build");
     }
     Ok(jlink_runtime_dir)
 }

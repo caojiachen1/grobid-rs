@@ -1,4 +1,8 @@
-use crate::build_modules::common::*;
+use crate::build_modules::common::{
+    bail, copy_dir_contents, fs, print_cargo_warning, Context, DirCopyOptions, File, FsExtraError,
+    Path, Result, BUILD_SUCCESS_MARKER_FILE, GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX,
+    GROBID_ONEJAR_NAME_SUFFIX, GROBID_RELEASE_TAG, GROBID_VERSION,
+};
 use crate::build_modules::fingerprint;
 use crate::build_modules::utils::run_command;
 
@@ -22,25 +26,25 @@ fn run_gradle_build(grobid_source_root: &Path, java_home: &Path) -> Result<()> {
 
     // Disable Gradle Daemon (--no-daemon) to avoid persistent locks. Clean first, then build tasks.
     let clean_task = "clean";
-    print_cargo_warning(&format!("Running Gradle task: {}", clean_task));
+    print_cargo_warning(&format!("Running Gradle task: {clean_task}"));
     run_command(
         &gradlew_path,
         &["--no-daemon", clean_task],
         grobid_source_root,
         Some(&[("JAVA_HOME", java_home)]),
     )
-    .with_context(|| format!("Gradle task {} failed.", clean_task))?;
+    .with_context(|| format!("Gradle task {clean_task} failed."))?;
 
     let build_tasks = vec![":grobid-core:shadowJar", "assemble"]; // assemble builds grobid-home resources
     for task in build_tasks {
-        print_cargo_warning(&format!("Running Gradle task: {}", task));
+        print_cargo_warning(&format!("Running Gradle task: {task}"));
         run_command(
             &gradlew_path,
             &["--no-daemon", task],
             grobid_source_root,
             Some(&[("JAVA_HOME", java_home)]),
         )
-        .with_context(|| format!("Gradle task {} failed.", task))?;
+        .with_context(|| format!("Gradle task {task} failed."))?;
     }
 
     print_cargo_warning("Gradle build tasks completed successfully.");
@@ -67,21 +71,15 @@ fn copy_grobid_artifacts(
     }
 
     // 1. Copy grobid-core-X.Y.Z-onejar.jar
-    let onejar_name = format!(
-        "{}-{}{}",
-        GROBID_JAR_NAME_PREFIX,
-        GROBID_RELEASE_TAG, // This comes from common.rs, should match version
-        GROBID_ONEJAR_NAME_SUFFIX
-    );
+    let onejar_name =
+        format!("{GROBID_JAR_NAME_PREFIX}-{GROBID_RELEASE_TAG}{GROBID_ONEJAR_NAME_SUFFIX}",);
     let onejar_source_path = grobid_source_root
         .join("grobid-core/build/libs")
         .join(&onejar_name);
 
     // Use GROBID_VERSION for the target jar name to maintain consistency
-    let target_jar_name = format!(
-        "{}-{}{}",
-        GROBID_JAR_NAME_PREFIX, GROBID_VERSION, GROBID_ONEJAR_NAME_SUFFIX
-    );
+    let target_jar_name =
+        format!("{GROBID_JAR_NAME_PREFIX}-{GROBID_VERSION}{GROBID_ONEJAR_NAME_SUFFIX}",);
     let onejar_target_path = target_grobid_deployment_dir.join(&target_jar_name);
 
     if !onejar_source_path.exists() {
@@ -162,15 +160,14 @@ pub fn build_and_stage_grobid(
 
     let up_to_date = fp_path.is_file()
         && success_marker.exists()
-        && match File::open(&fp_path) {
-            Ok(file) => match serde_json::from_reader::<_, fingerprint::Fingerprint>(file) {
-                Ok(stored_fp) => stored_fp == current_fp,
-                Err(_) => false,
-            },
-            Err(_) => false,
-        };
+        && File::open(&fp_path).is_ok_and(|file| {
+            serde_json::from_reader::<_, fingerprint::Fingerprint>(file)
+                .is_ok_and(|stored_fp| stored_fp == current_fp)
+        });
 
-    if !up_to_date {
+    if up_to_date {
+        print_cargo_warning("Grobid artefacts unchanged – skipping Gradle build");
+    } else {
         print_cargo_warning(&format!(
             "Grobid artifacts not found or build incomplete at {}. Will build and stage.",
             target_grobid_deployment_dir.display()
@@ -207,8 +204,6 @@ pub fn build_and_stage_grobid(
             "Grobid successfully built and artifacts staged at: {}",
             target_grobid_deployment_dir.display()
         ));
-    } else {
-        print_cargo_warning("Grobid artefacts unchanged – skipping Gradle build");
     }
     Ok(())
 }

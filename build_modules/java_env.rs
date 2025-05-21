@@ -1,4 +1,6 @@
-use crate::build_modules::common::*;
+use crate::build_modules::common::{
+    bail, env, print_cargo_warning, PathBuf, Result, JAVA_HOME_ENV_VAR,
+};
 
 pub fn locate_java_home() -> Result<PathBuf> {
     print_cargo_warning("Attempting to locate JAVA_HOME...");
@@ -15,12 +17,14 @@ pub fn locate_java_home() -> Result<PathBuf> {
             path = mac_jdk_home;
         }
         if path.exists() && path.join("bin/javac").exists() {
-            print_cargo_warning(&format!(
-                "Using JAVA_HOME from environment: {}",
-                path.display()
-            ));
-            return Ok(path);
-        } else {
+            let javac_path = path.join("bin/javac");
+            if javac_path.exists() {
+                print_cargo_warning(&format!(
+                    "Using JAVA_HOME from environment: {}",
+                    path.display()
+                ));
+                return Ok(path);
+            }
             print_cargo_warning(&format!(
                 "Warning: JAVA_HOME environment variable set to '{}', but it doesn't seem to be a valid JDK path (missing bin/javac). Trying auto-detection...",
                 path.display()

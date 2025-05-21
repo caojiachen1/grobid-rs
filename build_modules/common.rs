@@ -67,5 +67,5 @@ pub const CARGO_LINK_LIB_DYLIB_PREFIX: &str = "cargo:rustc-link-lib=dylib=";
 // ----------- Utility Functions (moved here for now, might go to utils.rs later) -----------
 
 pub fn print_cargo_warning(message: &str) {
-    println!("{}{}", CARGO_WARNING_PREFIX, message);
+    println!("{CARGO_WARNING_PREFIX}{message}");
 }

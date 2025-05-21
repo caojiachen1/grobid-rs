@@ -1,5 +1,12 @@
-use crate::build_modules::common::*;
+use crate::build_modules::common::{
+    bail, env, print_cargo_warning, Path, PathBuf, Result, CARGO_LINK_LIB_DYLIB_PREFIX,
+    CARGO_LINK_LIB_STATIC_PREFIX, CARGO_LINK_SEARCH_NATIVE_PREFIX, CARGO_RERUN_IF_CHANGED_ENV_VAR,
+    CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR, FORCE_GROBID_REBUILD_ENV_VAR, GROBID_HOME_DIR_NAME,
+    GROBID_JAR_NAME_PREFIX, GROBID_ONEJAR_NAME_SUFFIX, GROBID_RS_ASSETS_PATH_ENV_VAR,
+    GROBID_VERSION, JAVA_HOME_ENV_VAR,
+};
 
+#[allow(clippy::too_many_lines)]
 pub fn setup_jni_linkage(
     java_home_path: &Path,
     jlink_runtime_path: &Path,
@@ -64,8 +71,7 @@ pub fn setup_jni_linkage(
     // For macOS, Linux, and Windows, we link against libjvm dynamically.
     // The exact name can vary slightly or be handled by the linker finding it in the search path.
     match env::consts::OS {
-        "macos" => println!("{}jvm", CARGO_LINK_LIB_DYLIB_PREFIX),
-        "linux" => println!("{}jvm", CARGO_LINK_LIB_DYLIB_PREFIX),
+        "macos" | "linux" => println!("{CARGO_LINK_LIB_DYLIB_PREFIX}jvm"),
         "windows" => {
             // On Windows, the jvm.dll is usually found, but we might need to link against jvm.lib
             // The linker search path should handle finding jvm.dll at runtime.
@@ -77,11 +83,11 @@ pub fn setup_jni_linkage(
                     CARGO_LINK_SEARCH_NATIVE_PREFIX,
                     jdk_lib_dir.display()
                 );
-                println!("{}jvm", CARGO_LINK_LIB_STATIC_PREFIX); // Link against the import library
+                println!("{CARGO_LINK_LIB_STATIC_PREFIX}jvm"); // Link against the import library
             } else {
                 print_cargo_warning("Warning: jvm.lib not found in JDK lib directory. Relying on linker to find jvm.dll via server path.");
                 // If no jvm.lib, still try to hint for dylib, though it's less common to specify this for Windows DLLs directly.
-                println!("{}jvm", CARGO_LINK_LIB_DYLIB_PREFIX);
+                println!("{CARGO_LINK_LIB_DYLIB_PREFIX}jvm");
             }
         }
         _ => print_cargo_warning(&format!(
@@ -95,10 +101,8 @@ pub fn setup_jni_linkage(
 
     // --- Grobid JAR and Home Path for Runtime ---
     // These are passed as environment variables that the Rust application can use at runtime.
-    let grobid_jar_name = format!(
-        "{}-{}{}",
-        GROBID_JAR_NAME_PREFIX, GROBID_VERSION, GROBID_ONEJAR_NAME_SUFFIX
-    );
+    let grobid_jar_name =
+        format!("{GROBID_JAR_NAME_PREFIX}-{GROBID_VERSION}{GROBID_ONEJAR_NAME_SUFFIX}");
     let final_jar_path = target_grobid_deployment_dir.join(grobid_jar_name);
     let final_grobid_home_path = target_grobid_deployment_dir.join(GROBID_HOME_DIR_NAME);
 
@@ -140,19 +144,10 @@ pub fn setup_jni_linkage(
     ));
 
     // --- Rerun Conditions ---
-    println!("{}build.rs", CARGO_RERUN_IF_CHANGED_ENV_VAR); // Rerun if build.rs changes
-    println!(
-        "{}{}",
-        CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR, GROBID_RS_ASSETS_PATH_ENV_VAR
-    );
-    println!(
-        "{}{}",
-        CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR, FORCE_GROBID_REBUILD_ENV_VAR
-    );
-    println!(
-        "{}{}",
-        CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR, JAVA_HOME_ENV_VAR
-    );
+    println!("{CARGO_RERUN_IF_CHANGED_ENV_VAR}build.rs"); // Rerun if build.rs changes
+    println!("{CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR}{GROBID_RS_ASSETS_PATH_ENV_VAR}");
+    println!("{CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR}{FORCE_GROBID_REBUILD_ENV_VAR}");
+    println!("{CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR}{JAVA_HOME_ENV_VAR}");
     // Potentially add rerun if changed for files in build_modules/*, but that can get complex.
     // For now, changing build.rs itself (e.g. by adding a comment) will trigger a rerun.
 
