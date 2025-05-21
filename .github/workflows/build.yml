@@ -154,7 +154,15 @@ jobs:
         
       - name: Install zstd (Windows)
         if: runner.os == 'Windows'
-        run: choco install zstd
+        shell: pwsh
+        run: |
+          $ZSTD_VERSION = "1.5.5"
+          $ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}/zstd-v${ZSTD_VERSION}-win64.zip"
+          Invoke-WebRequest -Uri $ZSTD_URL -OutFile zstd.zip
+          Expand-Archive -Path zstd.zip -DestinationPath zstd-extract
+          $zstdPath = "$PWD\zstd-extract\zstd-v${ZSTD_VERSION}-win64"
+          Add-Content $env:GITHUB_PATH "$zstdPath"
+          echo "Installed zstd to $zstdPath"
       
       # Build crate only if source code has changed
       - name: cargo build
