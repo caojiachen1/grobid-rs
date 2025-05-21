@@ -241,6 +241,13 @@ fn decompress_zstd_file(compressed_path: &PathBuf, target_path: &PathBuf) -> Res
 }
 
 fn main() -> Result<()> {
+    // Skip full build process when running just for typechecking/linting
+    if std::env::var("SKIP_GROBID_ASSETS").as_deref() == Ok("1") {
+        // Tell Cargo we are a no-op but still force-rebuild if build.rs changes
+        println!("cargo:rerun-if-changed=build.rs");
+        return Ok(());
+    }
+
     // Load .env if present
     dotenv().ok();
     print_cargo_warning("Starting Grobid-RS modular build script");
@@ -381,7 +388,10 @@ fn main() -> Result<()> {
     // The Grobid artefacts themselves live under `target/`; Cargo should **not**
     // rebuild when they change.  Tell it explicitly:
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed={}", FORCE_GROBID_REBUILD_ENV_VAR);
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        FORCE_GROBID_REBUILD_ENV_VAR
+    );
     // Everything else (GROBID_VERSION, fingerprints…) is handled inside build.rs.
 
     Ok(())

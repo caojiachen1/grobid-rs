@@ -15,6 +15,7 @@ pub const CACHE_MAX_SIZE_ENV: &str = "GROBID_RS_CACHE_MAX_SIZE";
 pub const CACHE_AUTO_PRUNE_ENV: &str = "GROBID_RS_CACHE_AUTO_PRUNE";
 
 /// Default check interval for background GC (1 hour)
+#[allow(dead_code)]
 pub const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 /// Cache file info used for pruning decisions
@@ -42,10 +43,10 @@ pub fn get_max_cache_size() -> u64 {
 /// Check if auto-pruning is enabled
 pub fn is_auto_prune_enabled() -> bool {
     match std::env::var(CACHE_AUTO_PRUNE_ENV) {
-        Ok(val) => match val.to_lowercase().as_str() {
-            "true" | "1" | "yes" | "y" | "on" => true,
-            _ => false,
-        },
+        Ok(val) => matches!(
+            val.to_lowercase().as_str(),
+            "true" | "1" | "yes" | "y" | "on"
+        ),
         Err(_) => true, // Default to true if env var is not set
     }
 }
@@ -63,7 +64,10 @@ pub fn get_cache_size() -> Result<u64, GrobidError> {
     let mut total_size = 0;
 
     // Debug log the cache directory path
-    tracing::debug!("Calculating size of cache directory: {}", cache_dir.display());
+    tracing::debug!(
+        "Calculating size of cache directory: {}",
+        cache_dir.display()
+    );
 
     // Check if directory exists before iterating
     if !cache_dir.exists() {
@@ -71,12 +75,16 @@ pub fn get_cache_size() -> Result<u64, GrobidError> {
         return Ok(0);
     }
 
-    for entry in fs::read_dir(&cache_dir).map_err(|e| GrobidError::Io(e))? {
-        let entry = entry.map_err(|e| GrobidError::Io(e))?;
-        let metadata = entry.metadata().map_err(|e| GrobidError::Io(e))?;
+    for entry in fs::read_dir(&cache_dir).map_err(GrobidError::Io)? {
+        let entry = entry.map_err(GrobidError::Io)?;
+        let metadata = entry.metadata().map_err(GrobidError::Io)?;
         if metadata.is_file() {
             let file_size = metadata.len();
-            tracing::trace!("Found file: {} ({} bytes)", entry.path().display(), file_size);
+            tracing::trace!(
+                "Found file: {} ({} bytes)",
+                entry.path().display(),
+                file_size
+            );
             total_size += file_size;
         }
     }
@@ -90,16 +98,16 @@ pub fn get_human_readable_cache_size() -> Result<String, GrobidError> {
     let size_bytes = get_cache_size()?;
 
     if size_bytes < 1024 {
-        return Ok(format!("{} B", size_bytes));
+        Ok(format!("{} B", size_bytes))
     } else if size_bytes < 1024 * 1024 {
-        return Ok(format!("{:.2} KB", size_bytes as f64 / 1024.0));
+        Ok(format!("{:.2} KB", size_bytes as f64 / 1024.0))
     } else if size_bytes < 1024 * 1024 * 1024 {
-        return Ok(format!("{:.2} MB", size_bytes as f64 / (1024.0 * 1024.0)));
+        Ok(format!("{:.2} MB", size_bytes as f64 / (1024.0 * 1024.0)))
     } else {
-        return Ok(format!(
+        Ok(format!(
             "{:.2} GB",
             size_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
-        ));
+        ))
     }
 }
 
@@ -145,8 +153,8 @@ pub fn list_cache_files() -> Result<Vec<PathBuf>, GrobidError> {
         );
         GrobidError::Io(e)
     })? {
-        let entry = entry.map_err(|e| GrobidError::Io(e))?;
-        let metadata = entry.metadata().map_err(|e| GrobidError::Io(e))?;
+        let entry = entry.map_err(GrobidError::Io)?;
+        let metadata = entry.metadata().map_err(GrobidError::Io)?;
         if metadata.is_file() {
             debug!("Found cache file: {}", entry.path().display());
             files.push(entry.path());
@@ -225,7 +233,7 @@ fn get_cache_files_by_age() -> Result<Vec<CacheFileInfo>, GrobidError> {
         );
         GrobidError::Io(e)
     })? {
-        let entry = entry.map_err(|e| GrobidError::Io(e))?;
+        let entry = entry.map_err(GrobidError::Io)?;
         let path = entry.path();
         debug!("Examining cache entry: {}", path.display());
 
@@ -477,6 +485,7 @@ pub fn clear_cache() -> Result<(usize, u64), GrobidError> {
 ///
 /// This function is meant to be called from a separate thread and will run
 /// indefinitely, checking and pruning the cache at regular intervals.
+#[allow(dead_code)]
 pub fn background_gc_task(interval: Duration) {
     loop {
         // Sleep before first check to avoid immediate pruning on startup
@@ -509,6 +518,7 @@ pub fn background_gc_task(interval: Duration) {
 }
 
 /// Start a background garbage collection thread
+#[allow(dead_code)]
 pub fn start_background_gc() {
     let interval = DEFAULT_GC_INTERVAL;
 
@@ -532,6 +542,7 @@ pub fn start_background_gc() {
 /// This is a convenience function that can be called periodically to
 /// ensure the cache stays under the size limit. It checks the current
 /// size and prunes if needed.
+#[allow(dead_code)]
 pub fn check_and_prune_if_needed() -> Result<(), GrobidError> {
     if !is_auto_prune_enabled() {
         return Ok(());

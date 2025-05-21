@@ -89,7 +89,7 @@ pub fn ensure_jlink_runtime(
 
     // Use a dummy path for gradlew since we don't need it for JRE fingerprinting
     let current_fp = fingerprint::Fingerprint::current(java_home_path, &PathBuf::new())?;
-    
+
     let up_to_date = fp_path.is_file()
         && success_marker.exists()
         && match File::open(&fp_path) {
@@ -101,9 +101,18 @@ pub fn ensure_jlink_runtime(
         };
 
     if !up_to_date {
+        let reason = if !jlink_runtime_dir.exists() {
+            "JRE directory not found"
+        } else if !success_marker.exists() {
+            "JRE success marker missing"
+        } else {
+            "JRE fingerprint changed"
+        };
+
         print_cargo_warning(&format!(
-            "jlink JRE not found or build incomplete at {}. Will build JRE.",
-            jlink_runtime_dir.display()
+            "jlink JRE rebuild needed at {} (reason: {}). Will build JRE.",
+            jlink_runtime_dir.display(),
+            reason
         ));
         build_jlink_runtime(
             java_home_path,
@@ -116,15 +125,15 @@ pub fn ensure_jlink_runtime(
                 success_marker.display()
             )
         })?;
-        
+
         // Save the fingerprint
-        let file = File::create(&fp_path).with_context(|| 
+        let file = File::create(&fp_path).with_context(|| {
             format!("Failed to create fingerprint file at {}", fp_path.display())
-        )?;
-        serde_json::to_writer_pretty(file, &current_fp).with_context(||
+        })?;
+        serde_json::to_writer_pretty(file, &current_fp).with_context(|| {
             format!("Failed to write fingerprint data to {}", fp_path.display())
-        )?;
-        
+        })?;
+
         print_cargo_warning(&format!(
             "jlink JRE successfully built at: {}",
             jlink_runtime_dir.display()

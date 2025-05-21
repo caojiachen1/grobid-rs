@@ -57,9 +57,12 @@ impl ProcessingStage {
 }
 
 /// Progress information sent from the worker to the UI
+#[allow(dead_code)]
 struct ProgressInfo {
     stage: ProcessingStage,
     progress: f64,
+    message: String,
+    time: std::time::Instant,
 }
 
 /// Simulate processing a document with progress updates
@@ -74,6 +77,7 @@ fn process_document(
     let send_progress = |stage: ProcessingStage, message: &str| {
         let _ = progress_sender.send(ProgressInfo {
             stage,
+            progress: stage.percentage() as f64,
             message: message.to_string(),
             time: Instant::now(),
         });

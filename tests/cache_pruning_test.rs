@@ -1,9 +1,9 @@
+use serial_test::serial;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
-use serial_test::serial;
 use tempfile::tempdir;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -41,6 +41,7 @@ fn debug_dir_contents(dir: &PathBuf, prefix: &str) {
 }
 
 // Ensure the cache directory exists for testing
+#[allow(dead_code)]
 fn ensure_test_cache() -> PathBuf {
     // Get the actual cache directory from the library
     let cache_dir = grobid_rs::get_cache_dir().expect("Failed to get cache directory");
@@ -214,15 +215,11 @@ fn test_cache_pruning() {
             // Try direct removal of all cache files as a fallback
             let files = fs::read_dir(&cache_dir).expect("Should be able to read cache dir");
             let mut removed = 0;
-            for entry in files {
-                if let Ok(entry) = entry {
-                    if let Ok(metadata) = entry.metadata() {
-                        if metadata.is_file() {
-                            if fs::remove_file(entry.path()).is_ok() {
-                                removed += 1;
-                                println!("Manually removed: {}", entry.path().display());
-                            }
-                        }
+            for entry in files.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    if metadata.is_file() && fs::remove_file(entry.path()).is_ok() {
+                        removed += 1;
+                        println!("Manually removed: {}", entry.path().display());
                     }
                 }
             }
@@ -302,15 +299,14 @@ fn test_cache_pruning() {
 
         // This will be fixed in the implementation, but for now do a manual clear
         let mut manual_removed = 0;
-        for entry in fs::read_dir(&cache_dir).expect("Failed to read cache dir") {
-            if let Ok(entry) = entry {
-                if let Ok(metadata) = entry.metadata() {
-                    if metadata.is_file() {
-                        if fs::remove_file(entry.path()).is_ok() {
-                            manual_removed += 1;
-                            println!("Manually cleared: {}", entry.path().display());
-                        }
-                    }
+        for entry in fs::read_dir(&cache_dir)
+            .expect("Failed to read cache dir")
+            .flatten()
+        {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() && fs::remove_file(entry.path()).is_ok() {
+                    manual_removed += 1;
+                    println!("Manually cleared: {}", entry.path().display());
                 }
             }
         }
@@ -353,7 +349,7 @@ fn test_cache_size_reporting() {
     // Set environment variable to control cache directory
     env::set_var("GROBID_RS_CACHE_DIR", cache_path.to_str().unwrap());
     println!("Set GROBID_RS_CACHE_DIR to: {}", cache_path.display());
-    
+
     // Double-check the environment variable is set correctly
     match env::var("GROBID_RS_CACHE_DIR") {
         Ok(value) => println!("Verified GROBID_RS_CACHE_DIR is set to: {}", value),
@@ -369,10 +365,11 @@ fn test_cache_size_reporting() {
 
     // Debug directory contents
     println!("Directory contents after creating file:");
-    for entry in fs::read_dir(&cache_path).expect("Failed to read dir") {
-        if let Ok(entry) = entry {
-            println!("  - {}", entry.path().display());
-        }
+    for entry in fs::read_dir(&cache_path)
+        .expect("Failed to read dir")
+        .flatten()
+    {
+        println!("  - {}", entry.path().display());
     }
 
     // Verify file exists and has content
@@ -410,7 +407,8 @@ fn test_cache_size_reporting() {
     assert!(
         cache_size >= file_size,
         "Cache size should include our test file size (expected >= {} bytes, got {} bytes)",
-        file_size, cache_size
+        file_size,
+        cache_size
     );
 
     // Test human readable size

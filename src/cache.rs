@@ -128,7 +128,7 @@ pub fn get_cache_dir() -> Result<PathBuf, GrobidError> {
 pub fn ensure_cache_dir() -> Result<(), GrobidError> {
     let dir = get_cache_dir()?;
     if !dir.exists() {
-        fs::create_dir_all(&dir).map_err(|e| GrobidError::Io(e))?;
+        fs::create_dir_all(&dir).map_err(GrobidError::Io)?;
     }
     Ok(())
 }
@@ -136,13 +136,13 @@ pub fn ensure_cache_dir() -> Result<(), GrobidError> {
 /// Generate a unique cache key for a PDF
 fn generate_cache_key(pdf_path: &Path) -> Result<String, GrobidError> {
     // Get file metadata for uniqueness
-    let metadata = fs::metadata(pdf_path).map_err(|e| GrobidError::Io(e))?;
+    let metadata = fs::metadata(pdf_path).map_err(GrobidError::Io)?;
 
     // Generate a cache key based on:
     // 1. Absolute path (normalized)
     // 2. File size
     // 3. Last modified time
-    let canonical_path = pdf_path.canonicalize().map_err(|e| GrobidError::Io(e))?;
+    let canonical_path = pdf_path.canonicalize().map_err(GrobidError::Io)?;
 
     let file_size = metadata.len();
 
@@ -210,7 +210,7 @@ where
     if !config.force_reprocess && config.skip_existing && cache_path.exists() {
         // Read from cache
         let start_time = SystemTime::now();
-        let content = fs::read_to_string(&cache_path).map_err(|e| GrobidError::Io(e))?;
+        let content = fs::read_to_string(&cache_path).map_err(GrobidError::Io)?;
 
         // Calculate time saved
         let elapsed = SystemTime::now()

@@ -1,9 +1,8 @@
-//! JSON Extraction Example
+//! XML/TEI Extraction Example
 //!
 //! This example demonstrates how to use grobid-rs to extract structured information
-//! from PDF documents in JSON format using the typed Rust data structures.
+//! from PDF documents in XML/TEI format.
 
-use serde_json;
 use std::env;
 use std::path::Path;
 use std::process;
@@ -38,133 +37,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = grobid_rs::GrobidConfig::new(grobid_home);
     grobid_rs::init_with_config(&config)?;
 
-    // Extract header information using the new JSON API
-    println!("\n--- Processing Header with JSON API ---");
-    match grobid_rs::process_header_json(pdf_path) {
-        Ok(header) => {
-            println!("Successfully extracted header information:");
+    // Extract header information using the TEI API
+    println!("\n--- Processing Header with TEI API ---");
+    match grobid_rs::process_header(pdf_path) {
+        Ok(header_xml) => {
+            println!("Successfully extracted header information as TEI XML:");
+            println!("TEI XML output (truncated):");
+            println!("{}", truncate_text(&header_xml, 200));
 
-            // Print title
-            if let Some(title) = &header.title {
-                println!("Title: {}", title);
-            } else {
-                println!("Title: [Not found]");
-            }
+            // Note: In a real application, you would typically use an XML parser
+            // like quick-xml or roxmltree to extract specific elements from the TEI
 
-            // Print authors
-            println!("Authors:");
-            if header.authors.is_empty() {
-                println!("  [None found]");
-            } else {
-                for (i, author) in header.authors.iter().enumerate() {
-                    print!("  {}. ", i + 1);
-                    if let Some(name) = &author.full_name {
-                        println!("{}", name);
-                    } else {
-                        let mut name_parts = Vec::new();
-                        if let Some(first) = &author.first_name {
-                            name_parts.push(first.clone());
-                        }
-                        if let Some(middle) = &author.middle_name {
-                            name_parts.push(middle.clone());
-                        }
-                        if let Some(last) = &author.last_name {
-                            name_parts.push(last.clone());
-                        }
-                        println!("{}", name_parts.join(" "));
-                    }
-                }
-            }
-
-            // Print abstract
-            if let Some(abstract_text) = &header.abstract_text {
-                println!("Abstract: {}", truncate_text(abstract_text, 200));
-            }
-
-            // Print DOI
-            if let Some(doi) = &header.doi {
-                println!("DOI: {}", doi);
-            }
-
-            // Convert to JSON and print
-            println!("\nFull header metadata as JSON:");
-            let json = serde_json::to_string_pretty(&header)?;
-            println!("{}", truncate_text(&json, 500));
+            println!("\nTo extract specific data like title, authors, etc., you would");
+            println!("need to parse the TEI XML. In this example, we're just showing the raw XML.");
         }
         Err(e) => {
             eprintln!("Error processing header: {}", e);
         }
     }
 
-    // Extract references using the JSON API
-    println!("\n--- Processing References with JSON API ---");
-    match grobid_rs::process_references_json(pdf_path) {
-        Ok(references) => {
-            println!("Successfully extracted {} references:", references.len());
+    // Extract references using the TEI API
+    println!("\n--- Processing References with TEI API ---");
+    match grobid_rs::process_references(pdf_path) {
+        Ok(references_xml) => {
+            println!("Successfully extracted references as TEI XML:");
+            println!("TEI XML output (truncated):");
+            println!("{}", truncate_text(&references_xml, 200));
 
-            // Print the first few references
-            let count = std::cmp::min(3, references.len());
-            for (i, reference) in references.iter().enumerate().take(count) {
-                println!("Reference {}:", i + 1);
+            // Note: In a real application, you would typically use an XML parser
+            // to extract the reference data from the TEI document
 
-                if let Some(title) = &reference.title {
-                    println!("  Title: {}", title);
-                }
-
-                if !reference.authors.is_empty() {
-                    println!("  Authors: {}", reference.authors.join(", "));
-                }
-
-                if let Some(date) = &reference.date {
-                    if let Some(year) = &date.year {
-                        println!("  Year: {}", year);
-                    }
-                }
-
-                if let Some(venue) = &reference.venue {
-                    println!("  Venue: {}", venue);
-                }
-
-                println!();
-            }
-
-            if references.len() > count {
-                println!("... and {} more references.", references.len() - count);
-            }
+            println!("\nTo extract individual references and their metadata,");
+            println!("you would need to parse the TEI XML structure.");
         }
         Err(e) => {
             eprintln!("Error processing references: {}", e);
         }
     }
 
-    // Extract full text using the JSON API
-    println!("\n--- Processing Full Text with JSON API ---");
-    match grobid_rs::fulltext_to_json(pdf_path) {
-        Ok(document) => {
-            println!("Successfully extracted full document:");
-            println!(
-                "  Title: {}",
-                document
-                    .metadata
-                    .title
-                    .clone()
-                    .unwrap_or_else(|| "[Not found]".to_string())
-            );
-            println!("  Authors: {} author(s)", document.metadata.authors.len());
+    // Extract full text using the TEI API
+    println!("\n--- Processing Full Text with TEI API ---");
+    match grobid_rs::fulltext_to_tei(pdf_path) {
+        Ok(document_xml) => {
+            println!("Successfully extracted full document as TEI XML:");
+            println!("TEI XML output (truncated):");
+            println!("{}", truncate_text(&document_xml, 200));
 
-            if let Some(full_text) = &document.full_text {
-                println!("  Sections: {} section(s)", full_text.sections.len());
-                println!("  Figures: {} figure(s)", full_text.figures.len());
-                println!("  Tables: {} table(s)", full_text.tables.len());
-            }
+            // Note: In a real application, you would typically use an XML parser
+            // to extract the document structure, sections, figures, tables, etc.
 
-            println!("  References: {} reference(s)", document.references.len());
-
-            // Print as JSON
-            println!("\nFull document metadata as JSON (truncated):");
-            let document_clone = document.clone();
-            let json = serde_json::to_string_pretty(&document_clone)?;
-            println!("{}", truncate_text(&json, 500));
+            println!("\nTo extract structured data from the document,");
+            println!("you would need to parse the TEI XML.");
         }
         Err(e) => {
             eprintln!("Error processing full text: {}", e);

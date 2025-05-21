@@ -153,9 +153,13 @@ pub fn build_and_stage_grobid(
     let success_marker = target_grobid_deployment_dir.join(BUILD_SUCCESS_MARKER_FILE);
     let fp_path = target_grobid_deployment_dir.join(".fingerprint.json");
 
-    let gradlew = grobid_source_root.join(if cfg!(windows) {"gradlew.bat"} else {"gradlew"});
+    let gradlew = grobid_source_root.join(if cfg!(windows) {
+        "gradlew.bat"
+    } else {
+        "gradlew"
+    });
     let current_fp = fingerprint::Fingerprint::current(java_home_path, &gradlew)?;
-    
+
     let up_to_date = fp_path.is_file()
         && success_marker.exists()
         && match File::open(&fp_path) {
@@ -190,15 +194,15 @@ pub fn build_and_stage_grobid(
                 success_marker.display()
             )
         })?;
-        
+
         // Save the fingerprint
-        let file = File::create(&fp_path).with_context(|| 
+        let file = File::create(&fp_path).with_context(|| {
             format!("Failed to create fingerprint file at {}", fp_path.display())
-        )?;
-        serde_json::to_writer_pretty(file, &current_fp).with_context(||
+        })?;
+        serde_json::to_writer_pretty(file, &current_fp).with_context(|| {
             format!("Failed to write fingerprint data to {}", fp_path.display())
-        )?;
-        
+        })?;
+
         print_cargo_warning(&format!(
             "Grobid successfully built and artifacts staged at: {}",
             target_grobid_deployment_dir.display()
