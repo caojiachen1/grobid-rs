@@ -94,6 +94,10 @@ jobs:
           name: chef-recipe
           path: recipe.json
 
+      # Set target directory for cargo
+      - name: set target dir
+        run: echo "CARGO_TARGET_DIR=target" >> "$GITHUB_ENV"
+        
       # Fallback cache for remaining dependencies
       - uses: Swatinem/rust-cache@v2    # handles registry/git/target
         with:
@@ -176,6 +180,18 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.4
         env:
           SCCACHE_GHA_ENABLED: "true"
+        if: runner.os != 'Windows'
+        
+      # Use a Windows-optimized configuration for sccache on Windows
+      - name: Setup sccache (Windows)
+        if: runner.os == 'Windows'
+        uses: mozilla-actions/sccache-action@v0.0.4
+        with:
+          version: "v0.4.0"
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          SCCACHE_CACHE_SIZE: "1G"
+          SCCACHE_IDLE_TIMEOUT: "0"
 
       # Install faster linkers
       - name: Install mold (Linux)
@@ -186,10 +202,21 @@ jobs:
         if: runner.os == 'Linux'
         run: echo 'RUSTFLAGS=-C link-arg=-fuse-ld=mold' >> $GITHUB_ENV
         
-      # Use default linker on macOS rather than lld
-      - name: Use default linker on macOS
+      # Install mold linker on macOS
+      - name: Install mold (macOS)
         if: runner.os == 'macOS'
-        run: echo 'RUSTFLAGS=' >> $GITHUB_ENV
+        run: brew install mold
+        
+      # Use mold linker on macOS for faster builds
+      - name: Use mold linker (macOS)
+        if: runner.os == 'macOS'
+        run: echo 'RUSTFLAGS=-C link-arg=-fuse-ld=mold' >> $GITHUB_ENV
+        
+      # Use lld linker for Windows to speed up builds
+      - name: Use lld linker (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld" | Out-File -Append -FilePath $env:GITHUB_ENV
 
       # JDK needed for build.rs compilation but we use vendored JRE for runtime
       - uses: actions/setup-java@v3
@@ -277,7 +304,9 @@ jobs:
       - name: Build (release) (Windows)
         if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
         shell: pwsh
-        run: cargo build --release --locked -j $env:NUMBER_OF_PROCESSORS --target ${{ matrix.target }} --features cli
+        run: |
+          # Use all available cores and parallel linking
+          cargo build --release --locked -j $env:NUMBER_OF_PROCESSORS --target ${{ matrix.target }} --features cli
 
       # Install nextest for faster test runs
       - uses: taiki-e/install-action@nextest
