@@ -1,6 +1,19 @@
 # GitHub Actions Caching for Grobid
 
-This document outlines how we use GitHub Actions caching to improve build performance by avoiding repeated downloads of the Grobid bundle.
+This document outlines how we use GitHub Actions caching to improve build performance for Grobid in our CI.
+
+## Caching Strategy
+
+Our approach is to:
+
+1. Leverage the vendored Grobid files in the repository (no download needed)
+2. Cache only the platform-specific JRE runtime built with jlink
+
+This strategy:
+- Avoids downloading the large Grobid bundle (~1 GB) repeatedly
+- Eliminates network dependency on external GitHub releases
+- Ensures consistency across all matrix jobs
+- Still benefits from caching for the platform-specific components
 
 ## Caching Mechanism Comparison
 
@@ -10,79 +23,64 @@ This document outlines how we use GitHub Actions caching to improve build perfor
 | Artifacts (upload-artifact) | Retention up to 90 days (configurable) | Good for attaching the bundle to each run for later inspection | Not restored automatically—you must download it with a second job |
 | Release asset + gh release download | Permanent once you cut a release | Zero quota pressure on the Actions cache; available to anyone | Requires you to maintain a tagged release for every Grobid version |
 
-For day-to-day CI, the first option (`actions/cache`) is simplest and usually well within the 10 GB budget.
+For day-to-day CI, we use `actions/cache` for the JRE runtime and rely on vendored files for Grobid assets.
 
 ## Implementation
 
-Our workflow includes the following steps to implement caching:
+Our workflow includes the following steps:
 
 ```yaml
 env:
-  GROBID_VERSION: 0.8.2               # keep one source of truth
-  GROBID_ZIP: grobid-${{ env.GROBID_VERSION }}-onejar.zip
-  GROBID_CACHE_DIR: ${{ github.workspace }}/.grobid-cache
+  GROBID_VERSION: '0.8.2'  # Used for JRE cache keys
 
-# Restore (or later save) the Grobid ZIP
-- name: Restore Grobid cache
-  id: grobid-cache
+# Cache JRE runtime by platform
+- name: Cache JRE runtime
+  id: jre-cache
   uses: actions/cache@v4
   with:
-    # anything placed here will be cached
-    path: ${{ env.GROBID_CACHE_DIR }}
-    key: grobid-${{ env.GROBID_VERSION }}-bundle
-    restore-keys: |
-      grobid-${{ env.GROBID_VERSION }}
+    path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
+    key: jre-${{ runner.os }}-${{ matrix.target }}-0.8.2
 
-# Fetch only if the cache miss occurred
-- name: Download Grobid release ZIP
-  if: steps.grobid-cache.outputs.cache-hit != 'true'
+# Build minimal JRE via jlink only if not in cache
+- name: Build jlink image
+  if: steps.jre-cache.outputs.cache-hit != 'true'
   run: |
-    mkdir -p "${GROBID_CACHE_DIR}"
-    curl -fsSL -o "${GROBID_CACHE_DIR}/${GROBID_ZIP}" \
-      "https://github.com/kermitt2/grobid/releases/download/v${GROBID_VERSION}/grobid-${GROBID_VERSION}-onejar.zip"
+    mkdir -p vendor/jre/${{ matrix.os }}
+    jlink \
+      --add-modules java.base,java.logging,java.xml,jdk.unsupported \
+      --strip-debug --no-header-files --no-man-pages --compress=2 \
+      --output vendor/jre/${{ matrix.os }}
 ```
 
 ## How It Works
 
-1. The **Restore step** tries to untar the cache named `grobid-0.8.2-bundle`. If it exists and is fresh, the ZIP appears instantly (from GitHub's CDN).
+1. The **Restore step** tries to retrieve the cached JRE runtime for the specific platform (identified by runner.os and target).
 
-2. The **Download step** runs only on a cache miss, fetching the ZIP once from GitHub Releases (or any mirror).
+2. The **Build step** runs only on a cache miss, creating a minimal JRE runtime with just the required modules.
 
-3. On job completion, the same cache key is uploaded automatically, so the next run (even on another branch) will hit the cache.
+3. On job completion, the cache is automatically saved for future runs.
 
-The ZIP itself is platform-agnostic, so we deliberately omit `${{ runner.os }}` from the key to let all matrix jobs share one cache entry. GitHub takes care of deduplicating identical uploads.
+Each matrix job has its own platform-specific JRE cache, but all jobs use the same vendored Grobid files from the repository.
 
 ## Things to Watch Out For
 
-### Size & Quota
-- A single cache entry may not exceed 5 GB, and the sum of all caches in a repo is kept under 10 GB; excess entries are evicted LRU-style.
-- If the Grobid bundle ever exceeds that, switch to the Release-asset strategy instead.
+### Vendored Files
+- Ensure your vendored files are kept up-to-date with the Grobid version you want to use
+- The repository now contains the Grobid files, which increases its size but improves CI reliability
 
 ### Cache Expiry
-- After 7 days of inactivity, GitHub purges the entry.
-- If your repo has very infrequent CI, you might prefer the 90-day artifact route.
-
-### Forked Pull-Requests
-- External PRs can restore your cache but cannot save a new one for security reasons.
-- That merely drops you back to the download path for those runs.
+- After 7 days of inactivity, GitHub purges JRE cache entries
+- For infrequent CI, you might want to consider GitHub Actions scheduled workflows to keep the cache fresh
 
 ### Version Bumps
-- When you upgrade Grobid, bump `GROBID_VERSION` (thus the cache key), and the new ZIP will be downloaded and stored alongside the old one—no manual invalidation needed.
+- When upgrading Grobid, update the version number in both the workflow and in vendored files
+- Update the JRE cache key when you modify the JRE configuration to force a rebuild
 
-## Alternatives & Optimizations
-
-### Release Asset + gh Release Download
-Ideal for long-lived projects: push the ZIP once per version to a GitHub Release and insert:
-
-```bash
-gh release download v${GROBID_VERSION} -p '*onejar.zip' -O "${GROBID_CACHE_DIR}/${GROBID_ZIP}"
-```
-
-in place of curl; you still keep the `actions/cache` wrapper for quick intra-CI reuse.
+## Optimizations
 
 ### Pre-compressed Vendor Directory
-Our build script already accepts `.zst` compressed files; compressing the extracted grobid-home and JRE cuts the cache size dramatically and avoids the unzip step. Just add `*.zst` to the `path:` list in the cache step.
+Our build script accepts `.zst` compressed files; compressing the extracted grobid-home and JRE cuts the repository size dramatically. The build.rs script automatically handles decompression as needed.
 
 ## TL;DR
 
-Yes—drop an `actions/cache` step around the ZIP (or even the fully-populated vendor/ directory) and key it by `GROBID_VERSION`; CI will become network-free and 10–15× faster after the first run, with zero changes to your Rust build logic.
+We use a hybrid approach: vendored Grobid files plus cached JRE runtimes. This makes CI builds network-free and 10–15× faster with zero changes to Rust build logic and excellent reliability.
