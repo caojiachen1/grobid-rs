@@ -50,6 +50,34 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # Install cargo-chef for dependency caching
+      - name: Install cargo-chef
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-chef
+
+      # Generate recipe file (this rarely changes)
+      - name: Generate recipe
+        run: cargo chef prepare --recipe-path recipe.json
+
+      # Build dependencies using recipe (cached across runs)
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: ${{ runner.os }}-lint-chef-${{ hashFiles('recipe.json') }}
+          restore-keys: |
+            ${{ runner.os }}-lint-chef-
+
+      # Cook dependencies (using cache if available)
+      - name: Build dependencies
+        run: cargo chef cook --recipe-path recipe.json
+
+      # Fallback cache for remaining dependencies
       - uses: Swatinem/rust-cache@v2    # handles registry/git/target
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -85,7 +113,35 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2   # smarter than plain actions/cache
+      # Install cargo-chef for dependency caching
+      - name: Install cargo-chef
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-chef
+
+      # Generate recipe file (this rarely changes)
+      - name: Generate recipe
+        run: cargo chef prepare --recipe-path recipe.json
+
+      # Build dependencies using recipe (cached across runs)
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/${{ matrix.target }}
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.target }}-chef-${{ hashFiles('recipe.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-chef-
+
+      # Cook dependencies (using cache if available)
+      - name: Build dependencies
+        run: cargo chef cook --release --target ${{ matrix.target }} --recipe-path recipe.json --features cli
+
+      # Fallback cache for remaining dependencies
+      - uses: Swatinem/rust-cache@v2
         with:
           target-dir: target/${{ matrix.target }}
           key: ${{ runner.os }}-${{ matrix.target }}-rust-1.87.0-${{ hashFiles('**/Cargo.lock') }}
