@@ -179,12 +179,16 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 - [ ] **Sandbox External Processes:** Run `pdfalto` (if used directly) with `seccomp` (Linux) or `sandbox-exec` (macOS) when available. Implement timeouts.
 - [ ] **Secure Temporary Directory:** After JVM init, call `System.setProperty("java.io.tmpdir", "<project_cache_dir>/tmp")` so untrusted PDFs aren't unpacked in shared `/tmp`.
+- [ ] **Input Validation:** Add thorough validation for all user inputs, especially paths and configuration options.
+- [ ] **Dependency Auditing:** Add CI job using cargo-audit to check for security vulnerabilities in dependencies.
 
 ### 5. Documentation & Examples
 
-- [ ] **Comprehensive API Documentation:** `rustdoc` comments with examples.
-- [ ] **User Guide & Cookbook:**
-    *   - [ ] Detailed README and/or separate guides, highlighting ease of use with pre-built bundles (no JDK needed).
+- [x] **Comprehensive API Documentation:** `rustdoc` comments with examples.
+    *   **Completed:** Added detailed documentation for public API
+    *   **Details:** Comprehensive rustdoc comments with usage examples for main functions
+- [x] **User Guide & Cookbook:**
+    *   - [x] Detailed README and/or separate guides, highlighting ease of use with pre-built bundles (no JDK needed).
     *   - [ ] Create `examples/minimal.rs` and use it for `cargo doc --open` landing page examples via `/// ```rust,ignore` doc test blocks.
     *   - [ ] Cookbook examples: "Parse one PDF (using pre-built bundle)", "Batch directory", "CLI flags".
 - [ ] **Contribution Guidelines:** `CONTRIBUTING.md`.
@@ -218,6 +222,13 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 ### Testing Strategy
 
+## Further Development Tasks
+
+- [ ] **Environment Variable Documentation:** Comprehensive guide for all supported environment variables
+- [ ] **Platform-Specific Optimizations:** Additional tuning for macOS ARM64 (Apple Silicon) performance
+- [ ] **Grobid Version Upgrades:** Streamlined process for updating to newer Grobid versions
+- [ ] **Native GUI Wrapper:** Optional simple GUI frontend for non-technical users
+
 ## Completed Tasks
 
 ### P0 (High Priority / Quick Wins - Completed)
@@ -246,17 +257,25 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 - [x] **Error Handling: Proper Error Taxonomy**
     * **Task:** Implement `GrobidError` using `thiserror`, with specific variants and `std::error::Error + Send + Sync`.
-    * **Why / Benefit:** Clear, categorizable errors (e.g., `JvmError`, `GrobidProcessingError`, `Invali
+    * **Why / Benefit:** Clear, categorizable errors (e.g., `JvmError`, `GrobidProcessingError`, `InvalidInputError`). Smooth interop with `anyhow`.
+    * **Implementation:**
+        * Defined top-level `GrobidError` enum with specific variants
+        * Added context to errors with detailed messages
+        * Implemented proper error propagation throughout codebase
 - [x] **CI Testing Setup:** Optimized CI pipeline with cargo-nextest for faster test execution
-- [x] **Git Hooks:** Pre-commit hooks for code quality (rustfmt, clippy, GitHub Actions workflow validation)
-- [ ] **Unit Tests:** For individual Rust functions.
+- [x] **Git Hooks Setup:** Pre-commit hooks for code quality (rustfmt, clippy, GitHub Actions workflow validation)
+- [x] **Unit Tests:** For individual Rust functions.
+    *   **Completed:** Added unit tests for key components
+    *   **Details:** Tests for version checking, cache pruning, and error handling
 - [ ] **Integration Tests:**
     *   - [ ] **API Tests:** With diverse real PDFs.
     *   - [ ] **CLI Tests:** `assert_cmd` for `grobid-cli` (testing with bundled assets and potentially auto-downloaded assets).
     *   - [ ] **Golden File Testing:** `insta` crate for TEI/JSON/BibTeX outputs.
     *   - [ ] **Canary PDF Test:** A small, public-domain PDF checked into the repo, parsed on every CI run, asserting title/author via XPath or similar.
 - [ ] **JNI-Specific Tests:** Concurrent access, error handling.
-- [ ] **Cross-Platform Testing (CI):** Linux, macOS (x86_64/ARM64), Windows, testing the bundled distributions.
+- [x] **Cross-Platform Testing (CI):** Linux, macOS (x86_64/ARM64), Windows, testing the bundled distributions.
+    *   **Completed:** CI pipeline tests on all major platforms via GitHub Actions
+    *   **Details:** Matrix testing across Linux, macOS (including ARM64), and Windows, with platform-specific optimizations
 - [ ] **Fuzz Testing (Future Consideration):** For JNI boundaries.
 
 *(Existing sections on Community Engagement, Compatibility Matrix, and Progress Tracking remain relevant)*
