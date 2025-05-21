@@ -9,6 +9,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   GROBID_VERSION: '0.8.2'
+  CARGO_PROFILE_RELEASE_DEBUG: "false"
 
 # ------------------------------------------------------------------
 #  Re-usable shell snippets (macOS/Linux use Bash; Windows use pwsh)
@@ -20,8 +21,26 @@ defaults:
     # Windows helper is handled in step.
 
 jobs:
+  # Check if source files have changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'build.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.cargo/**'
+              - '.github/workflows/**'
 
-# Fast syntactic & lint checks – always run
+  # Fast syntactic & lint checks – always run
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +60,8 @@ jobs:
 
   # Full build & test (matrix) – push only
   build:
-    if: github.event_name == 'push'
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.outputs.src == 'true'
     strategy:
       fail-fast: false         # don't cancel other OSes if one fails
       matrix:
@@ -66,14 +86,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2   # smarter than plain actions/cache
         with:
           target-dir: target/${{ matrix.target }}
-          key: ${{ runner.os }}-${{ matrix.target }}
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
       # Optional: speed-up incremental builds / LLVM linking
       - uses: Mozilla-Actions/sccache-action@v0.0.8
-        with:
-          cache: gha
         env:
           SCCACHE_GHA_ENABLED: "true"
+
+      # Install faster linkers
+      - name: Install mold (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y mold
+        
+      - name: Use mold linker (Linux)
+        if: runner.os == 'Linux'
+        run: echo 'RUSTFLAGS="-C link-arg=-fuse-ld=mold"' >> $GITHUB_ENV
+        
+      - name: Use lld linker (macOS)
+        if: runner.os == 'macOS'
+        run: echo 'RUSTFLAGS="-C link-arg=-fuse-ld=lld"' >> $GITHUB_ENV
 
       # JDK needed for build.rs compilation but we use vendored JRE for runtime
       - uses: actions/setup-java@v3
@@ -92,6 +123,22 @@ jobs:
         run: |
           if (-not (Test-Path vendor)) { New-Item -Path vendor -ItemType Directory }
           if (-not (Test-Path vendor/grobid)) { New-Item -Path vendor/grobid -ItemType Directory }
+
+      # Cache Grobid artifacts
+      - name: Cache Grobid artifacts
+        id: grobid-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/grobid
+            vendor/runtime
+          # key on Grobid version + OS; bump when you upgrade Grobid
+          key: grobid-${{ env.GROBID_VERSION }}-${{ matrix.os }}
+
+      # Only run build.rs's Gradle / jlink work when the cache was NOT hit
+      - name: Force fresh Grobid build
+        if: steps.grobid-cache.outputs.cache-hit != 'true'
+        run: echo "FORCE_GROBID_REBUILD=true" >> "$GITHUB_ENV"
 
       # Install zstd for decompression (needed for .zst files)
       - name: Install zstd (macOS)
@@ -117,8 +164,9 @@ jobs:
       - name: Build (release)
         run: cargo build --release --locked --target ${{ matrix.target }} --features cli
 
-      - name: Unit tests
-        run: cargo test --lib --bins --target ${{ matrix.target }} -- --nocapture
-
-      - name: Integration tests
-        run: cargo test --test="*" --target ${{ matrix.target }} -- --nocapture
+      # Install nextest for faster test runs
+      - uses: taiki-e/install-action@nextest
+      
+      # Run tests with nextest (much faster than standard cargo test)
+      - name: Unit + integration tests
+        run: cargo nextest run --release --target ${{ matrix.target }}
