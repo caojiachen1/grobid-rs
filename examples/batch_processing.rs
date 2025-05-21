@@ -28,21 +28,27 @@ const MAX_THREADS: usize = 4;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
-    
+
     #[cfg(feature = "parallel")]
     let required_args = 4;
     #[cfg(not(feature = "parallel"))]
     let required_args = 3;
-    
+
     if args.len() < required_args + 1 {
         #[cfg(feature = "parallel")]
         {
-            eprintln!("Usage: {} <grobid_home_path> <input_dir> <output_dir> [num_threads]", args[0]);
+            eprintln!(
+                "Usage: {} <grobid_home_path> <input_dir> <output_dir> [num_threads]",
+                args[0]
+            );
             eprintln!("  num_threads: Optional, defaults to {}", MAX_THREADS);
         }
         #[cfg(not(feature = "parallel"))]
         {
-            eprintln!("Usage: {} <grobid_home_path> <input_dir> <output_dir>", args[0]);
+            eprintln!(
+                "Usage: {} <grobid_home_path> <input_dir> <output_dir>",
+                args[0]
+            );
         }
         process::exit(1);
     }
@@ -50,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grobid_home = Path::new(&args[1]);
     let input_dir = Path::new(&args[2]);
     let output_dir = Path::new(&args[3]);
-    
+
     // Parse optional thread count when parallel feature is enabled
     #[cfg(feature = "parallel")]
     let thread_count = if args.len() > 4 {
@@ -61,12 +67,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify paths
     if !grobid_home.exists() || !grobid_home.is_dir() {
-        eprintln!("Error: Grobid home directory not found at {}", grobid_home.display());
+        eprintln!(
+            "Error: Grobid home directory not found at {}",
+            grobid_home.display()
+        );
         process::exit(1);
     }
 
     if !input_dir.exists() || !input_dir.is_dir() {
-        eprintln!("Error: Input directory not found at {}", input_dir.display());
+        eprintln!(
+            "Error: Input directory not found at {}",
+            input_dir.display()
+        );
         process::exit(1);
     }
 
@@ -99,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let processed = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicUsize::new(0));
     let start_time = Instant::now();
-    
+
     // Share errors across threads
     let errors = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
 
@@ -115,33 +127,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Process files in parallel
         pool.install(|| {
             pdf_files.par_iter().for_each(|pdf_path| {
-                process_file(pdf_path, output_dir, &processed, &failed, total_files, &errors);
+                process_file(
+                    pdf_path,
+                    output_dir,
+                    &processed,
+                    &failed,
+                    total_files,
+                    &errors,
+                );
             });
         });
     }
-    
+
     #[cfg(not(feature = "parallel"))]
     {
         println!("Processing files sequentially (parallel feature not enabled)");
-        
+
         // Process files sequentially
         for pdf_path in &pdf_files {
-            process_file(pdf_path, output_dir, &processed, &failed, total_files, &errors);
+            process_file(
+                pdf_path,
+                output_dir,
+                &processed,
+                &failed,
+                total_files,
+                &errors,
+            );
         }
     };
 
     // Report results
     let elapsed = start_time.elapsed();
     let success_count = processed.load(Ordering::SeqCst) - failed.load(Ordering::SeqCst);
-    
+
     println!("\nProcessing Summary:");
     println!("-------------------");
     println!("Total time: {:.2}s", elapsed.as_secs_f64());
     println!("Total files: {}", total_files);
     println!("Successfully processed: {}", success_count);
     println!("Failed: {}", failed.load(Ordering::SeqCst));
-    println!("Average processing time: {:.2}s per document", 
-             elapsed.as_secs_f64() / total_files as f64);
+    println!(
+        "Average processing time: {:.2}s per document",
+        elapsed.as_secs_f64() / total_files as f64
+    );
 
     // Report errors if any
     let error_list = errors.lock().unwrap();
@@ -163,14 +191,14 @@ fn process_file(
     processed: &Arc<AtomicUsize>,
     failed: &Arc<AtomicUsize>,
     total_files: usize,
-    errors: &Arc<Mutex<Vec<(String, String)>>>
+    errors: &Arc<Mutex<Vec<(String, String)>>>,
 ) {
     let file_name = pdf_path.file_name().unwrap().to_string_lossy().to_string();
     let file_stem = pdf_path.file_stem().unwrap().to_string_lossy().to_string();
     let output_path = output_dir.join(format!("{}.tei.xml", file_stem));
-    
+
     println!("Processing: {}", file_name);
-    
+
     match grobid_rs::fulltext_to_tei(pdf_path) {
         Ok(tei_xml) => {
             // Write the TEI XML to the output file
@@ -197,9 +225,12 @@ fn process_file(
             failed.fetch_add(1, Ordering::SeqCst);
         }
     }
-    
+
     let count = processed.fetch_add(1, Ordering::SeqCst) + 1;
-    println!("Progress: {}/{} files ({:.1}%)", 
-             count, total_files, 
-             (count as f64 / total_files as f64) * 100.0);
+    println!(
+        "Progress: {}/{} files ({:.1}%)",
+        count,
+        total_files,
+        (count as f64 / total_files as f64) * 100.0
+    );
 }

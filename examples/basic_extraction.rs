@@ -20,7 +20,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify paths
     if !grobid_home.exists() || !grobid_home.is_dir() {
-        eprintln!("Error: Grobid home directory not found at {}", grobid_home.display());
+        eprintln!(
+            "Error: Grobid home directory not found at {}",
+            grobid_home.display()
+        );
         process::exit(1);
     }
 
@@ -79,8 +82,10 @@ fn truncate_output(text: &str, max_length: usize) -> String {
     if text.len() <= max_length {
         text.to_string()
     } else {
-        format!("{}... [truncated {} more characters]", 
-                &text[..max_length], 
-                text.len() - max_length)
+        format!(
+            "{}... [truncated {} more characters]",
+            &text[..max_length],
+            text.len() - max_length
+        )
     }
 }

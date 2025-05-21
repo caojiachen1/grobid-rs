@@ -1,113 +1,80 @@
 # GitHub Actions Caching for Grobid
 
-This document explains how we cache Grobid assets in GitHub Actions workflows to improve build speeds and reduce network usage.
+This document explains how we cache the Grobid bundle inside GitHub Actions to significantly speed up CI workflows.
 
 ## Overview
 
-The Grobid bundle (~1 GB) includes extensive machine learning models and a one-jar that are downloaded during the build process. By caching these assets with GitHub's cache action, we:
+Caching the Grobid bundle (~1 GB of models and the one-jar) is essential for efficient CI workflows. By using GitHub's caching mechanism, we:
 
-- Speed up CI builds by 10-15× after the first run
-- Reduce network usage and external dependencies
-- Ensure consistency across all matrix jobs
-- Minimize GitHub Actions billing minutes
+- Eliminate repeated downloads of large files across matrix jobs
+- Reduce build times by 10-15× after the first run
+- Maintain consistency across branches and PRs
+- Optimize GitHub Actions usage and reduce network load
+
+## Caching Options Comparison
+
+| Solution | Lifetime / limits | Pros | Cons |
+|----------|-------------------|------|------|
+| **actions/cache** | Evicted after 7 days of no access; total cache quota ≈ 10 GB per repo, each entry ≤ 5 GB | Automatic restore/save in one step; works across branches & PRs; no manual clean-up | Large files count against the 10 GB quota; rebuilt if untouched > 7 days |
+| **Artifacts** (upload-artifact) | Retention up to 90 days (configurable) | Good for attaching the bundle to each run for later inspection | Not restored automatically—you must download it with a second job |
+| **Release asset** + gh release download | Permanent once you cut a release | Zero quota pressure on the Actions cache; available to anyone | Requires you to maintain a tagged release for every Grobid version |
+
+For day-to-day CI the first option (`actions/cache`) is simplest and usually well within the 10 GB budget.
 
 ## Implementation
 
-Our caching strategy has two parts:
-
-1. Cache the original Grobid ZIP file (~500 MB)
-2. Cache the platform-specific minimal JREs (~30-40 MB each)
-
-### Workflow Implementation
-
-In our GitHub Actions workflow file:
+Our workflow uses the following pattern:
 
 ```yaml
 env:
-  GROBID_VERSION: 0.8.2
+  GROBID_VERSION: 0.8.2               # keep one source of truth
   GROBID_ZIP: grobid-${{ env.GROBID_VERSION }}-onejar.zip
   GROBID_CACHE_DIR: ${{ github.workspace }}/.grobid-cache
 
-steps:
-  # Restore Grobid ZIP from cache
-  - name: Restore Grobid cache
-    id: grobid-cache
-    uses: actions/cache@v4
-    with:
-      path: ${{ env.GROBID_CACHE_DIR }}
-      key: grobid-${{ env.GROBID_VERSION }}-zip
-      restore-keys: |
-        grobid-${{ env.GROBID_VERSION }}
+# -----------------------------------------------
+# Restore (or later save) the Grobid ZIP
+# -----------------------------------------------
+- name: Restore Grobid cache
+  id: grobid-cache
+  uses: actions/cache@v4
+  with:
+    # anything placed here will be cached
+    path: ${{ env.GROBID_CACHE_DIR }}
+    key: grobid-${{ env.GROBID_VERSION }}-zip
+    restore-keys: |
+      grobid-${{ env.GROBID_VERSION }}
 
-  # Download only on cache miss
-  - name: Download Grobid release ZIP
-    if: steps.grobid-cache.outputs.cache-hit != 'true'
-    run: |
-      mkdir -p "${{ env.GROBID_CACHE_DIR }}"
-      curl -fsSL -o "${{ env.GROBID_CACHE_DIR }}/${{ env.GROBID_ZIP }}" \
-        "https://github.com/kermitt2/grobid/releases/download/v${{ env.GROBID_VERSION }}/${{ env.GROBID_ZIP }}"
+# -----------------------------------------------
+# Fetch only if the cache miss occurred
+# -----------------------------------------------
+- name: Download Grobid release ZIP
+  if: steps.grobid-cache.outputs.cache-hit != 'true'
+  run: |
+    mkdir -p "${GROBID_CACHE_DIR}"
+    curl -fsSL -o "${GROBID_CACHE_DIR}/${GROBID_ZIP}" \
+      "https://github.com/kermitt2/grobid/releases/download/v${GROBID_VERSION}/grobid-${GROBID_VERSION}-onejar.zip"
+    # optional: verify SHA-256, then unzip into vendor/
+    unzip -q "${GROBID_CACHE_DIR}/${GROBID_ZIP}" -d vendor/
 
-  # Extract to vendor directory
-  - name: Extract Grobid
-    run: |
-      mkdir -p vendor/grobid
-      unzip -q "${{ env.GROBID_CACHE_DIR }}/${{ env.GROBID_ZIP }}" -d tmp
-      mv tmp/grobid-${{ env.GROBID_VERSION }}/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar vendor/grobid/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar
-      mv tmp/grobid-${{ env.GROBID_VERSION }}/grobid-home vendor/grobid/
-
-  # Cache JRE runtime too
-  - name: Cache JRE runtime
-    id: jre-cache
-    uses: actions/cache@v4
-    with:
-      path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
-      key: jre-${{ runner.os }}-${{ matrix.target }}
-
-  # Build JRE only on cache miss
-  - name: Build jlink image
-    if: steps.jre-cache.outputs.cache-hit != 'true'
-    run: |
-      mkdir -p vendor/jre/${{ matrix.os }}
-      jlink \
-        --add-modules java.base,java.logging,java.xml,jdk.unsupported \
-        --strip-debug --no-header-files --no-man-pages --compress=2 \
-        --output vendor/jre/${{ matrix.os }}
+# -----------------------------------------------
+# Build as normal – your existing build.rs will
+# pick up vendor/ automatically
+# -----------------------------------------------
+- name: cargo build
+  run: cargo build --release --features cli
 ```
 
 ## How It Works
 
-1. The workflow first tries to restore the Grobid ZIP from cache using a key based on the Grobid version.
-2. If the cache is found, the ZIP is immediately available. If not, it's downloaded from GitHub Releases.
-3. The ZIP is extracted to the vendor directory, which our build.rs script automatically detects.
-4. Similarly, we cache the platform-specific JRE runtime created with jlink.
-5. At the end of the workflow, these caches are automatically saved for future runs.
+1. **Restore step** tries to untar the cache named `grobid-0.8.2-zip`.
+   If it exists and is fresh, the ZIP appears instantly (from GitHub's CDN).
+2. **Download step** runs only on a cache miss, fetching the ZIP once from GitHub Releases (or any mirror).
+3. On job completion the same cache key is uploaded automatically, so the next run (even on another branch) will hit the cache.
 
-## Key Benefits
+The ZIP itself is platform-agnostic, so we deliberately omit `${{ runner.os }}` from the key to let all matrix jobs share one cache entry. GitHub takes care of deduplicating identical uploads.
 
-- **Platform Agnostic**: The Grobid ZIP is cached once and shared across all matrix jobs
-- **Version Management**: When the Grobid version changes, a new cache entry is created automatically
-- **Cross-Branch Sharing**: The cache works across branches and PRs (external PRs can read but not write)
-- **Minimal Maintenance**: No manual invalidation needed as keys change with version updates
+## Things to Watch Out For
 
-## Cache Limitations
-
-- **Maximum Size**: Each entry must be under 5 GB (not an issue for us)
-- **Total Quota**: GitHub limits repositories to ~10 GB total cache (not a concern with our strategy)
-- **Expiration**: Unused cache entries expire after 7 days of inactivity
-- **External PRs**: Forks can read but not write to the cache (falling back to download)
-
-## Optimizations
-
-For our specific use-case, we've implemented these optimizations:
-
-1. **Single Cache Entry**: By omitting the platform from the Grobid cache key, all matrix jobs share one cache 
-2. **Minimal JRE**: We build and cache minimal JREs for each platform to reduce size
-3. **Version-Specific Keys**: Cache keys include version numbers for automatic invalidation
-
-## Future Improvements
-
-Potential improvements to the caching strategy:
-
-1. **Pre-compressed vendor directory**: Store .zst compressed versions of the extracted files to reduce cache size
-2. **Release asset hosting**: For long-lived projects, host the bundle ourselves as a GitHub Release asset
-3. **Partial extractions**: Only extract the specific models needed for tests to reduce CI storage needs
+### Size & Quota
+- A single cache entry may not exceed 5 GB and the sum of all caches in a repo is kept under 10 GB; excess entries are evicted LRU-style.
+- If the Grobid bundle ever

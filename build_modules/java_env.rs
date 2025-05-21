@@ -15,7 +15,10 @@ pub fn locate_java_home() -> Result<PathBuf> {
             path = mac_jdk_home;
         }
         if path.exists() && path.join("bin/javac").exists() {
-            print_cargo_warning(&format!("Using JAVA_HOME from environment: {}", path.display()));
+            print_cargo_warning(&format!(
+                "Using JAVA_HOME from environment: {}",
+                path.display()
+            ));
             return Ok(path);
         } else {
             print_cargo_warning(&format!(
@@ -56,4 +59,4 @@ pub fn locate_java_home() -> Result<PathBuf> {
             bail!("Failed to locate JAVA_HOME using java_locator: {}. Please set JAVA_HOME environment variable.", e);
         }
     }
-} 
+}

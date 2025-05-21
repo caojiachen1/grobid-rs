@@ -1,14 +1,17 @@
 use crate::build_modules::common::*;
 use crate::build_modules::utils::verify_sha256;
-use std::sync::Mutex;
 use anyhow::anyhow;
 use bytes::Buf;
+use std::sync::Mutex;
 
 /// Optimized parallel download with range support and resume capability
 fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
     // If file exists & checksum matches → skip download
     if to.exists() && verify_sha256(to, expect_sha256).is_ok() {
-        print_cargo_warning(&format!("ZIP already present and checksum OK ({})", to.display()));
+        print_cargo_warning(&format!(
+            "ZIP already present and checksum OK ({})",
+            to.display()
+        ));
         return Ok(());
     }
 
@@ -88,7 +91,12 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
                 .header(header::RANGE, format!("bytes={}-{}", start, end))
                 .send()?;
             if resp.status() != StatusCode::PARTIAL_CONTENT && resp.status() != StatusCode::OK {
-                return Err(anyhow!("range GET {}-{} failed: {}", start, end, resp.status()));
+                return Err(anyhow!(
+                    "range GET {}-{} failed: {}",
+                    start,
+                    end,
+                    resp.status()
+                ));
             }
             let mut bytes = resp.bytes()?;
             let mut f = file_mutex.lock().unwrap();
@@ -114,8 +122,12 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
 #[allow(dead_code)]
 fn download_file(url: &str, to: &Path) -> Result<()> {
     print_cargo_warning(&format!("Downloading {} to {}", url, to.display()));
-    fs::create_dir_all(to.parent().unwrap())
-        .with_context(|| format!("Failed to create parent dir for download: {}", to.parent().unwrap().display()))?;
+    fs::create_dir_all(to.parent().unwrap()).with_context(|| {
+        format!(
+            "Failed to create parent dir for download: {}",
+            to.parent().unwrap().display()
+        )
+    })?;
 
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(30))
@@ -123,7 +135,9 @@ fn download_file(url: &str, to: &Path) -> Result<()> {
         .build()
         .context("Failed to build reqwest client")?;
 
-    let response = client.get(url).send()
+    let response = client
+        .get(url)
+        .send()
         .with_context(|| format!("Failed to GET {}", url))?;
 
     if !response.status().is_success() {
@@ -149,29 +163,44 @@ fn download_file(url: &str, to: &Path) -> Result<()> {
     .unwrap_or_else(|_| ProgressStyle::default_bar())
     .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| write!(w, "{:?}", state.eta()).unwrap())
     .progress_chars("==>"));
-    let download_file_name = Path::new(url).file_name().unwrap_or_default().to_string_lossy();
+    let download_file_name = Path::new(url)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
     pb.set_message(format!("Downloading {}", download_file_name));
 
     let mut dest_file = fs::File::create(to)
         .with_context(|| format!("Failed to create destination file: {}", to.display()))?;
-    
+
     let mut source = pb.wrap_read(response);
 
     io::copy(&mut source, &mut dest_file)
         .with_context(|| format!("Failed to write download to: {}", to.display()))?;
-    
-    pb.finish_with_message(format!("Successfully downloaded {} to {}", download_file_name, to.display()));
+
+    pb.finish_with_message(format!(
+        "Successfully downloaded {} to {}",
+        download_file_name,
+        to.display()
+    ));
 
     Ok(())
 }
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
-    print_cargo_warning(&format!("Extracting ZIP {} to {}", zip_path.display(), target_dir.display()));
+    print_cargo_warning(&format!(
+        "Extracting ZIP {} to {}",
+        zip_path.display(),
+        target_dir.display()
+    ));
     if !target_dir.exists() {
-        fs::create_dir_all(target_dir)
-            .with_context(|| format!("Failed to create target extraction dir: {}", target_dir.display()))?;
+        fs::create_dir_all(target_dir).with_context(|| {
+            format!(
+                "Failed to create target extraction dir: {}",
+                target_dir.display()
+            )
+        })?;
     }
-    
+
     // Open zip file directly instead of loading it all into memory
     let file = File::open(zip_path)
         .with_context(|| format!("Failed to open zip file: {}", zip_path.display()))?;
@@ -179,63 +208,93 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
         .with_context(|| format!("Failed to parse zip archive: {}", zip_path.display()))?;
 
     let pb_extract = ProgressBar::new(archive.len() as u64);
-    pb_extract.set_style(ProgressStyle::with_template(
-        "{msg} [{elapsed_precise}] [{wide_bar:.green/yellow}] {pos}/{len} files"
-    )
-    .unwrap_or_else(|_| ProgressStyle::default_bar())
-    .progress_chars("==>"));
-    pb_extract.set_message(format!("Extracting {}", zip_path.file_name().unwrap_or_default().to_string_lossy()));
+    pb_extract.set_style(
+        ProgressStyle::with_template(
+            "{msg} [{elapsed_precise}] [{wide_bar:.green/yellow}] {pos}/{len} files",
+        )
+        .unwrap_or_else(|_| ProgressStyle::default_bar())
+        .progress_chars("==>"),
+    );
+    pb_extract.set_message(format!(
+        "Extracting {}",
+        zip_path.file_name().unwrap_or_default().to_string_lossy()
+    ));
 
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
-            .with_context(|| format!("Error reading entry {} from zip: {}", i, zip_path.display()))?;
+        let mut entry = archive.by_index(i).with_context(|| {
+            format!("Error reading entry {} from zip: {}", i, zip_path.display())
+        })?;
         let outpath = match entry.enclosed_name() {
             Some(path) => target_dir.join(path),
             None => {
-                print_cargo_warning(&format!("Skipping entry with invalid path in zip: {}", entry.name()));
+                print_cargo_warning(&format!(
+                    "Skipping entry with invalid path in zip: {}",
+                    entry.name()
+                ));
                 continue;
             }
         };
 
         if (*entry.name()).ends_with('/') {
-            fs::create_dir_all(&outpath)
-                .with_context(|| format!("Failed to create directory from zip entry: {}", outpath.display()))?;
+            fs::create_dir_all(&outpath).with_context(|| {
+                format!(
+                    "Failed to create directory from zip entry: {}",
+                    outpath.display()
+                )
+            })?;
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    fs::create_dir_all(p)
-                        .with_context(|| format!("Failed to create parent directory for zip entry: {}", p.display()))?;
+                    fs::create_dir_all(p).with_context(|| {
+                        format!(
+                            "Failed to create parent directory for zip entry: {}",
+                            p.display()
+                        )
+                    })?;
                 }
             }
-            let mut outfile = fs::File::create(&outpath)
-                .with_context(|| format!("Failed to create file from zip entry: {}", outpath.display()))?;
-            io::copy(&mut entry, &mut outfile)
-                .with_context(|| format!("Failed to copy zip entry data to: {}", outpath.display()))?;
+            let mut outfile = fs::File::create(&outpath).with_context(|| {
+                format!(
+                    "Failed to create file from zip entry: {}",
+                    outpath.display()
+                )
+            })?;
+            io::copy(&mut entry, &mut outfile).with_context(|| {
+                format!("Failed to copy zip entry data to: {}", outpath.display())
+            })?;
         }
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             if let Some(mode) = entry.unix_mode() {
-                if mode & 0o111 != 0 { // Check if executable bit is set in zip
-                    fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))
-                        .with_context(|| format!("Failed to set executable permissions on: {}", outpath.display()))?;
+                if mode & 0o111 != 0 {
+                    // Check if executable bit is set in zip
+                    fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).with_context(
+                        || {
+                            format!(
+                                "Failed to set executable permissions on: {}",
+                                outpath.display()
+                            )
+                        },
+                    )?;
                 }
             }
         }
         pb_extract.inc(1);
     }
-    pb_extract.finish_with_message(format!("Successfully extracted {} to {}", zip_path.file_name().unwrap_or_default().to_string_lossy(), target_dir.display()));
+    pb_extract.finish_with_message(format!(
+        "Successfully extracted {} to {}",
+        zip_path.file_name().unwrap_or_default().to_string_lossy(),
+        target_dir.display()
+    ));
     Ok(())
 }
 
-pub fn ensure_grobid_source_extracted(
-    assets_dir: &Path,
-) -> Result<PathBuf> {
-    let grobid_source_checkout_dir_name = format!("{}{}/{}", 
-        GROBID_DIR_NAME_PREFIX, 
-        GROBID_VERSION, 
-        GROBID_SOURCE_SUBDIR_NAME
+pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
+    let grobid_source_checkout_dir_name = format!(
+        "{}{}/{}",
+        GROBID_DIR_NAME_PREFIX, GROBID_VERSION, GROBID_SOURCE_SUBDIR_NAME
     );
     let grobid_source_checkout_dir = assets_dir.join(grobid_source_checkout_dir_name);
     let success_marker = grobid_source_checkout_dir.join(EXTRACTION_SUCCESS_MARKER_FILE);
@@ -247,8 +306,13 @@ pub fn ensure_grobid_source_extracted(
             grobid_source_checkout_dir.display()
         ));
         // Determine actual root: prefer nested directory if present, else use checkout dir
-        let root = if grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION)).exists() {
-            grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION)).clone()
+        let root = if grobid_source_checkout_dir
+            .join(format!("grobid-{}", GROBID_VERSION))
+            .exists()
+        {
+            grobid_source_checkout_dir
+                .join(format!("grobid-{}", GROBID_VERSION))
+                .clone()
         } else {
             grobid_source_checkout_dir.clone()
         };
@@ -262,8 +326,12 @@ pub fn ensure_grobid_source_extracted(
         ));
 
         if !grobid_source_checkout_dir.exists() {
-             fs::create_dir_all(&grobid_source_checkout_dir)
-                .with_context(|| format!("Failed to create Grobid source directory: {}", grobid_source_checkout_dir.display()))?;
+            fs::create_dir_all(&grobid_source_checkout_dir).with_context(|| {
+                format!(
+                    "Failed to create Grobid source directory: {}",
+                    grobid_source_checkout_dir.display()
+                )
+            })?;
         }
 
         // Download the GROBID source archive
@@ -282,11 +350,20 @@ pub fn ensure_grobid_source_extracted(
         extract_zip(&grobid_zip_path, &grobid_source_checkout_dir)?;
 
         // Create success marker file
-        fs::File::create(&success_marker)
-            .with_context(|| format!("Failed to create success marker file: {}", success_marker.display()))?;
+        fs::File::create(&success_marker).with_context(|| {
+            format!(
+                "Failed to create success marker file: {}",
+                success_marker.display()
+            )
+        })?;
         // Determine root: nested or checkout dir
-        let root = if grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION)).exists() {
-            grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION)).clone()
+        let root = if grobid_source_checkout_dir
+            .join(format!("grobid-{}", GROBID_VERSION))
+            .exists()
+        {
+            grobid_source_checkout_dir
+                .join(format!("grobid-{}", GROBID_VERSION))
+                .clone()
         } else {
             grobid_source_checkout_dir.clone()
         };
@@ -297,10 +374,14 @@ pub fn ensure_grobid_source_extracted(
             grobid_source_checkout_dir.display()
         ));
         // The actual Grobid project root will be one level deeper due to GitHub zip structure
-        let actual_grobid_root = grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION));
+        let actual_grobid_root =
+            grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION));
         if !actual_grobid_root.exists() {
-            bail!("Extracted Grobid source, but the expected project root {} does not exist.", actual_grobid_root.display());
+            bail!(
+                "Extracted Grobid source, but the expected project root {} does not exist.",
+                actual_grobid_root.display()
+            );
         }
         Ok(actual_grobid_root)
     }
-} 
+}

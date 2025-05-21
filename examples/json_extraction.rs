@@ -3,10 +3,10 @@
 //! This example demonstrates how to use grobid-rs to extract structured information
 //! from PDF documents in JSON format using the typed Rust data structures.
 
+use serde_json;
 use std::env;
 use std::path::Path;
 use std::process;
-use serde_json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
@@ -21,7 +21,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify paths
     if !grobid_home.exists() || !grobid_home.is_dir() {
-        eprintln!("Error: Grobid home directory not found at {}", grobid_home.display());
+        eprintln!(
+            "Error: Grobid home directory not found at {}",
+            grobid_home.display()
+        );
         process::exit(1);
     }
 
@@ -40,14 +43,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match grobid_rs::process_header_json(pdf_path) {
         Ok(header) => {
             println!("Successfully extracted header information:");
-            
+
             // Print title
             if let Some(title) = &header.title {
                 println!("Title: {}", title);
             } else {
                 println!("Title: [Not found]");
             }
-            
+
             // Print authors
             println!("Authors:");
             if header.authors.is_empty() {
@@ -72,17 +75,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            
+
             // Print abstract
             if let Some(abstract_text) = &header.abstract_text {
                 println!("Abstract: {}", truncate_text(abstract_text, 200));
             }
-            
+
             // Print DOI
             if let Some(doi) = &header.doi {
                 println!("DOI: {}", doi);
             }
-            
+
             // Convert to JSON and print
             println!("\nFull header metadata as JSON:");
             let json = serde_json::to_string_pretty(&header)?;
@@ -98,33 +101,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match grobid_rs::process_references_json(pdf_path) {
         Ok(references) => {
             println!("Successfully extracted {} references:", references.len());
-            
+
             // Print the first few references
             let count = std::cmp::min(3, references.len());
             for (i, reference) in references.iter().enumerate().take(count) {
                 println!("Reference {}:", i + 1);
-                
+
                 if let Some(title) = &reference.title {
                     println!("  Title: {}", title);
                 }
-                
+
                 if !reference.authors.is_empty() {
                     println!("  Authors: {}", reference.authors.join(", "));
                 }
-                
+
                 if let Some(date) = &reference.date {
                     if let Some(year) = &date.year {
                         println!("  Year: {}", year);
                     }
                 }
-                
+
                 if let Some(venue) = &reference.venue {
                     println!("  Venue: {}", venue);
                 }
-                
+
                 println!();
             }
-            
+
             if references.len() > count {
                 println!("... and {} more references.", references.len() - count);
             }
@@ -139,17 +142,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match grobid_rs::fulltext_to_json(pdf_path) {
         Ok(document) => {
             println!("Successfully extracted full document:");
-            println!("  Title: {}", document.metadata.title.clone().unwrap_or_else(|| "[Not found]".to_string()));
+            println!(
+                "  Title: {}",
+                document
+                    .metadata
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| "[Not found]".to_string())
+            );
             println!("  Authors: {} author(s)", document.metadata.authors.len());
-            
+
             if let Some(full_text) = &document.full_text {
                 println!("  Sections: {} section(s)", full_text.sections.len());
                 println!("  Figures: {} figure(s)", full_text.figures.len());
                 println!("  Tables: {} table(s)", full_text.tables.len());
             }
-            
+
             println!("  References: {} reference(s)", document.references.len());
-            
+
             // Print as JSON
             println!("\nFull document metadata as JSON (truncated):");
             let document_clone = document.clone();
@@ -170,8 +180,10 @@ fn truncate_text(text: &str, max_length: usize) -> String {
     if text.len() <= max_length {
         text.to_string()
     } else {
-        format!("{}... [truncated {} more characters]", 
-                &text[..max_length], 
-                text.len() - max_length)
+        format!(
+            "{}... [truncated {} more characters]",
+            &text[..max_length],
+            text.len() - max_length
+        )
     }
 }

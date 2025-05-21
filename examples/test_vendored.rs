@@ -6,7 +6,7 @@ use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing Grobid initialization with vendored files...");
-    
+
     // The build.rs script sets the GROBID_RS_ASSETS_PATH environment variable
     // that points to where the Grobid resources are stored.
     // We can retrieve this variable to see where the vendored files were installed.
@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("GROBID_RS_ASSETS_PATH not set - this is unexpected");
     }
-    
+
     // In a real application, you would pass a path to grobid_rs::init(),
     // but the library should use the vendored files automatically.
     println!("Initializing Grobid...");
@@ -24,13 +24,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => {
             println!("SUCCESS: Grobid initialized successfully!");
             println!("Vendored files are working correctly.");
-        },
+        }
         Err(e) => {
             println!("ERROR: Failed to initialize Grobid: {}", e);
             println!("Vendored files might not be correctly set up.");
             return Err(e.into());
         }
     }
-    
+
     Ok(())
 }

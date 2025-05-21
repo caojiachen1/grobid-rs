@@ -1,7 +1,11 @@
 use crate::build_modules::common::*;
 use crate::build_modules::utils::run_command;
 
-fn build_jlink_runtime(java_home: &Path, jlink_output_dir: &Path, _target_grobid_deployment_dir: &Path) -> Result<()> {
+fn build_jlink_runtime(
+    java_home: &Path,
+    jlink_output_dir: &Path,
+    _target_grobid_deployment_dir: &Path,
+) -> Result<()> {
     print_cargo_warning(&format!(
         "Building jlink runtime at {} using JAVA_HOME={}",
         jlink_output_dir.display(),
@@ -20,7 +24,10 @@ fn build_jlink_runtime(java_home: &Path, jlink_output_dir: &Path, _target_grobid
     // Clean the output directory before running jlink
     if jlink_output_dir.exists() {
         fs::remove_dir_all(jlink_output_dir).with_context(|| {
-            format!("Failed to remove existing jlink runtime directory: {}", jlink_output_dir.display())
+            format!(
+                "Failed to remove existing jlink runtime directory: {}",
+                jlink_output_dir.display()
+            )
         })?;
     }
 
@@ -41,7 +48,10 @@ fn build_jlink_runtime(java_home: &Path, jlink_output_dir: &Path, _target_grobid
     }
 
     let module_path_str = jmods_dir.to_str().with_context(|| {
-        format!("Failed to convert jmods directory path to string: {}", jmods_dir.display())
+        format!(
+            "Failed to convert jmods directory path to string: {}",
+            jmods_dir.display()
+        )
     })?;
 
     let modules_to_include = JAKARTA_JLINK_MODULES;
@@ -80,9 +90,17 @@ pub fn ensure_jlink_runtime(
             "jlink JRE not found or build incomplete at {}. Will build JRE.",
             jlink_runtime_dir.display()
         ));
-        build_jlink_runtime(java_home_path, &jlink_runtime_dir, target_grobid_deployment_dir)?;
-        fs::File::create(&success_marker)
-            .with_context(|| format!("Failed to create JRE success marker: {}", success_marker.display()))?;
+        build_jlink_runtime(
+            java_home_path,
+            &jlink_runtime_dir,
+            target_grobid_deployment_dir,
+        )?;
+        fs::File::create(&success_marker).with_context(|| {
+            format!(
+                "Failed to create JRE success marker: {}",
+                success_marker.display()
+            )
+        })?;
         print_cargo_warning(&format!(
             "jlink JRE successfully built at: {}",
             jlink_runtime_dir.display()

@@ -1,7 +1,7 @@
 //! Test for modular library implementation
-//! 
+//!
 //! This example demonstrates the use of the refactored grobid-rs library.
-//! It shows how to initialize Grobid and process a PDF file using the 
+//! It shows how to initialize Grobid and process a PDF file using the
 //! three main functions.
 
 use std::env;
@@ -9,7 +9,6 @@ use std::path::Path;
 use std::process;
 
 fn main() -> Result<(), grobid_rs::GrobidError> {
-
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
@@ -22,7 +21,10 @@ fn main() -> Result<(), grobid_rs::GrobidError> {
 
     // Verify paths
     if !grobid_home.exists() || !grobid_home.is_dir() {
-        eprintln!("Error: Grobid home directory not found at {}", grobid_home.display());
+        eprintln!(
+            "Error: Grobid home directory not found at {}",
+            grobid_home.display()
+        );
         process::exit(1);
     }
 
@@ -37,7 +39,7 @@ fn main() -> Result<(), grobid_rs::GrobidError> {
         .base_path(grobid_home)
         .max_memory("1G")
         .build();
-    
+
     grobid_rs::init_with_config(&config)?;
 
     // Extract header information (title, authors, abstract, etc.)
@@ -85,8 +87,10 @@ fn truncate_output(text: &str, max_length: usize) -> String {
     if text.len() <= max_length {
         text.to_string()
     } else {
-        format!("{}... [truncated {} more characters]", 
-                &text[..max_length], 
-                text.len() - max_length)
+        format!(
+            "{}... [truncated {} more characters]",
+            &text[..max_length],
+            text.len() - max_length
+        )
     }
 }
