@@ -52,17 +52,36 @@ pub fn is_auto_prune_enabled() -> bool {
 
 /// Calculate the current size of the cache directory in bytes
 pub fn get_cache_size() -> Result<u64, GrobidError> {
+    // Log the cache directory environment variable if set
+    if let Ok(env_dir) = std::env::var(crate::cache::CACHE_DIR_ENV) {
+        tracing::debug!("Cache directory from environment: {}", env_dir);
+    } else {
+        tracing::debug!("Cache directory not set in environment");
+    }
+
     let cache_dir = get_cache_dir()?;
     let mut total_size = 0;
+
+    // Debug log the cache directory path
+    tracing::debug!("Calculating size of cache directory: {}", cache_dir.display());
+
+    // Check if directory exists before iterating
+    if !cache_dir.exists() {
+        tracing::debug!("Cache directory doesn't exist: {}", cache_dir.display());
+        return Ok(0);
+    }
 
     for entry in fs::read_dir(&cache_dir).map_err(|e| GrobidError::Io(e))? {
         let entry = entry.map_err(|e| GrobidError::Io(e))?;
         let metadata = entry.metadata().map_err(|e| GrobidError::Io(e))?;
         if metadata.is_file() {
-            total_size += metadata.len();
+            let file_size = metadata.len();
+            tracing::trace!("Found file: {} ({} bytes)", entry.path().display(), file_size);
+            total_size += file_size;
         }
     }
 
+    tracing::debug!("Total cache size: {} bytes", total_size);
     Ok(total_size)
 }
 

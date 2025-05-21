@@ -19,6 +19,7 @@ tracing = "0.1"
 [dev-dependencies]
 tempfile = "3.8"
 tracing-subscriber = "0.3"
+serial_test = "2.0"
 
 [features]
 default = []

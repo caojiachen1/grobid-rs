@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
+use serial_test::serial;
 use tempfile::tempdir;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -61,6 +62,7 @@ fn setup_tracing() {
 }
 
 #[test]
+#[serial]
 fn test_cache_pruning() {
     // Setup tracing
     setup_tracing();
@@ -335,6 +337,7 @@ fn test_cache_pruning() {
 }
 
 #[test]
+#[serial]
 fn test_cache_size_reporting() {
     // Setup tracing
     setup_tracing();
@@ -350,6 +353,12 @@ fn test_cache_size_reporting() {
     // Set environment variable to control cache directory
     env::set_var("GROBID_RS_CACHE_DIR", cache_path.to_str().unwrap());
     println!("Set GROBID_RS_CACHE_DIR to: {}", cache_path.display());
+    
+    // Double-check the environment variable is set correctly
+    match env::var("GROBID_RS_CACHE_DIR") {
+        Ok(value) => println!("Verified GROBID_RS_CACHE_DIR is set to: {}", value),
+        Err(e) => panic!("Failed to get GROBID_RS_CACHE_DIR: {}", e),
+    }
 
     // Verify the cache directory exists
     fs::create_dir_all(&cache_path).expect("Failed to create cache directory");
@@ -381,6 +390,18 @@ fn test_cache_size_reporting() {
     println!("Actual file size: {} bytes", file_size);
     assert!(file_size > 0, "File size should be non-zero");
 
+    // Verify we're getting the correct cache directory
+    println!("Checking cache directory from library...");
+    let lib_cache_dir = grobid_rs::get_cache_dir().expect("Failed to get cache dir from library");
+    println!("Library reports cache dir as: {}", lib_cache_dir.display());
+    assert_eq!(
+        lib_cache_dir.to_string_lossy(),
+        cache_path.to_string_lossy(),
+        "Cache directory mismatch: expected {}, got {}",
+        cache_path.display(),
+        lib_cache_dir.display()
+    );
+
     // Now check cache size - call it directly using our path
     let cache_size = grobid_rs::get_cache_size().expect("Failed to get cache size");
     println!("Cache size reported: {} bytes", cache_size);
@@ -388,7 +409,8 @@ fn test_cache_size_reporting() {
     // Assert that cache size is at least equal to our file size
     assert!(
         cache_size >= file_size,
-        "Cache size should include our test file size"
+        "Cache size should include our test file size (expected >= {} bytes, got {} bytes)",
+        file_size, cache_size
     );
 
     // Test human readable size
