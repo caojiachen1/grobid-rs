@@ -14,17 +14,7 @@ This document outlines the development plan and roadmap for grobid-rs, a Rust li
 
 This section outlines a concrete “next-iteration” roadmap that touches both the public library API and the CLI UX, ranked by impact and complexity.
 
-### P0 (High Priority / Quick Wins: Estimated 1-2 days development time)
-
-- [x] **CI Performance: Build & Test Optimization**
-    * **Completed:** Implemented advanced CI pipeline with cargo-chef, faster linkers, and efficient artifact caching
-    * **Benefit:** Reduced CI build times from ~8-12 minutes to ~2-3 minutes
-    * **Features added:**
-      * Multi-stage caching with cargo-chef for dependency separation
-      * Fast linkers (mold on Linux)
-      * Smart test execution with cargo-nextest
-      * Grobid artifact sharing across jobs
-      * Git hooks for code quality
+### P0 (High Priority / Quick Wins)
 
 - [ ] **CLI Usability: Sub-commands & Output Formats**
     *   **Task:** Refactor CLI to use positional verbs for processing types and flags for output formats.
@@ -55,55 +45,7 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
         // enum OutputFormat { Tei, Json, Bibtex }
         // // enum ProcessType { Fulltext, Header, References, PatentCitation }
         ```
-- [x] **JNI Method Signature Fix for GROBID 0.8.2**
-    *   **Task:** Fix JNI method signature mismatch in `processReferences` to match GROBID 0.8.2 API.
-    *   **Why / Benefit:** Resolves `NoSuchMethodError` by updating from `processReferences(String, BiblioItem)` to `processReferences(File, int)` and correctly handling the return type conversion from `List<BibDataSet>` to TEI string.
-- [x] **Library API: Config Builder**
-    *   **Task:** Implement `GrobidConfig::builder()` exposing `GrobidAnalysisConfig` options safely.
-    *   **Why / Benefit:** Keeps high-level API stable, allows advanced configuration (coordinates, consolidation) without proliferating function arguments.
-    *   **Implementation:**
-        *   Builder methods for common `GrobidAnalysisConfig` fields (e.g., `consolidate_header`, `include_coordinates`, `segment_sentences`).
-        *   `GrobidConfigBuilder::finish()` method that creates and returns a `jni::objects::GlobalRef<JObject>` for the Java `GrobidAnalysisConfig` instance. This instance can be cached and reused for multiple calls within a session to save JNI object creation overhead (~4ms per call).
-    *   **Quick sketch:**
-        ```rust
-        // // In lib.rs/config.rs
-        // pub struct GrobidConfig { /* internal fields, potentially the GlobalRef to GrobidAnalysisConfig */ }
-        // pub struct GrobidConfigBuilder { /* fields for options */ }
-        // impl GrobidConfigBuilder {
-        //     pub fn consolidate_header(mut self, val: bool) -> Self { /* ... */ }
-        //     pub fn include_coordinates(mut self, val: bool) -> Self { /* ... */ }
-        //     pub fn build(self) -> Result<GrobidConfig, GrobidError> { /* Creates Java GrobidAnalysisConfig, stores as GlobalRef */ }
-        // }
-        // // Usage:
-        // // let config = GrobidConfig::builder().consolidate_header(true).build()?;
-        // // grobid_rs::process_fulltext(pdf_path, &config, OutputFormat::Tei);
-        ```
-- [x] **Error Handling: Proper Error Taxonomy**
-    *   **Task:** Implement `GrobidError` using `thiserror`, with specific variants and `std::error::Error + Send + Sync`.
-    *   **Why / Benefit:** Clear, categorizable errors (e.g., `JvmError`, `GrobidProcessingError`, `InvalidInputError`). Smooth interop with `anyhow`.
-    *   **Implementation:**
-        *   Define top-level `GrobidError` enum.
-        *   Re-export typed sub-errors (e.g., `JvmError`, `JavaError`, `PdfAltoError`) that also implement `std::error::Error`. This allows callers to match specific error types while still using the umbrella `GrobidError`.
-    *   **Quick sketch (in `lib.rs`/`errors.rs`):**
-        ```rust
-        // #[derive(Debug, thiserror::Error)]
-        // pub enum JvmError { /* ... */ }
-        // #[derive(Debug, thiserror::Error)]
-        // pub enum GrobidProcessingError { /* ... */ }
 
-        // #[derive(Debug, thiserror::Error)]
-        // pub enum GrobidError {
-        //     #[error("JVM interaction error: {0}")]
-        //     Jvm(#[from] JvmError),
-        //     #[error("Grobid engine processing failed: {0}")]
-        //     Processing(#[from] GrobidProcessingError),
-        //     #[error("Invalid input: {0}")]
-        //     Input(String),
-        //     #[error("IO error: {0}")]
-        //     Io(#[from] std::io::Error),
-        //     // ... other error variants
-        // }
-        ```
 - [ ] **Core: Version Guard**
     *   **Task:** At runtime, check `grobid.properties.version` in `grobid-home` against compile-time `GROBID_VERSION`.
     *   **Why / Benefit:** Prevents cryptic Java errors if mismatched `grobid-core` and `grobid-home` are used. Error out early with a clear message.
@@ -114,17 +56,7 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
     *   **Task:** Add progress bar/spinner in CLI (via `indicatif`) for JVM init and per-PDF processing.
     *   **Why / Benefit:** Visual feedback for long operations (Grobid warm-up, large PDFs), avoids perception of a hung application.
     *   **Implementation:** Wrap `grobid_rs::init()` and PDF processing calls with `indicatif::ProgressBar` or `ProgressBar::spinner()` when stdin is a TTY.
-- [x] **Performance: Batch Mode & Thread Pool**
-    *   **Task:** Implement `grobid-cli process ... dir/ --jobs N` and library support for parallel processing.
-    *   **Why / Benefit:** Significant speed-up for processing multiple PDFs. Grobid models are generally thread-safe.
-    *   **Implementation:**
-        *   Use `rayon::ThreadPoolBuilder::new().num_threads(cfg.thread_count).stack_size(4 << 20).build_global()` in `grobid_rs::init_with_config` or similar central place. Default `--jobs` to `num_cpus / 2` to avoid full saturation.
-        *   Provide `parallel_fulltext(dir)` (and similar for other operations) convenience functions in the library.
-        *   Ensure JNI context (`JNIEnv`) is correctly handled per thread (usually by attaching/detaching threads if they are spawned outside of JNI's knowledge, or by ensuring each Rayon task gets its own `JNIEnv`).
-- [x] **Library API: Streaming API for Batch Processing**
-    *   **Task:** Implement `fn process_batch<P: AsRef<Path>>(paths: impl Iterator<Item = P>, config: &GrobidConfig, ...) -> impl Iterator<Item = Result<(P, String), GrobidError>>`.
-    *   **Why / Benefit:** Memory-friendly for very large batches; allows consuming results incrementally.
-    *   **Implementation:** Internally use the thread pool.
+
 - [ ] **Core: Safe JNI Guard (`JniHandle`)**
     *   **Task:** Create a `JniHandle<'a> { env: JNIEnv<'a>, engine: JObject<'a> }` struct.
     *   **Why / Benefit:** Simplifies JNI calls and makes them safer. `attach()` method returns this handle. `Deref<Target=JNIEnv>` for easy access to `env`. RAII `Drop` implementation clears pending Java exceptions automatically. Reduces boilerplate and risk of forgetting `exception_clear()`.
@@ -153,15 +85,6 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 ### P2 (Lower Priority / Enhancements)
 
-- [x] **Performance: Cache Layer**
-    *   **Task:** Implement caching for processed outputs (`--skip-existing`, `--force-reprocess`).
-    *   **Why / Benefit:** Huge speed-up on re-runs (CI, development).
-    *   **Implementation:**
-        *   Cache key: SHA-256 of PDF content + Grobid version. Don't bake full config into key to maximize cache hits.
-        *   Store outputs per-kind: `<hash>.tei`, `<hash>.json`.
-        *   If config flags differ significantly, user passes `--force-reprocess`.
-        *   Library API: `fn fulltext_cached<P: AsRef<Path>>(pdf: P, cache_dir: P) -> Result<PathBuf>` that writes TEI to `cache_dir/<sha>.tei`.
-        *   ✅ Added cache pruning functionality to prevent unbounded cache growth.
 - [ ] **Library API: Serde Structs for JSON Output**
     *   **Task:** Provide Serde structs for common Grobid outputs (header, citations) and functions to deserialize into them.
     *   **Why / Benefit:** Improves DX for Rust consumers; type-safe access to data.
@@ -169,14 +92,17 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
         *   Define Rust structs (e.g., `HeaderMetadata`, `Author`).
         *   Use Grobid's built-in JSON converters if available (e.g., `TEIConverter` on JVM side, or `HeaderResult.builder().withJson(true)`).
         *   Expose functions like `process_header_json(pdf_path) -> Result<HeaderMetadata, GrobidError>`.
+
 - [ ] **Observability: Logging Hooks (`tracing`)**
     *   **Task:** Integrate `tracing` crate for structured logging in the library.
     *   **Why / Benefit:** Essential for diagnosing JNI issues, Grobid behavior.
     *   **Implementation:** Add `tracing::info!`, `tracing::debug!` at key points. CLI uses `tracing-subscriber` to set verbosity (`RUST_LOG=grobid_rs=info`).
+
 - [ ] **CLI: Standardized Exit Codes**
     *   **Task:** Map `GrobidError` variants to `std::process::ExitCode` for machine-readable scriptability.
     *   **Why / Benefit:** Allows scripts to reliably determine outcomes.
     *   **Implementation:** E.g., Invalid PDF = 100, JVM init error = 101, etc.
+
 - [ ] **Distribution: Auto-download pre-built asset bundle on first run (CLI)**
     *   **Task:** If CLI detects missing assets (e.g., when installed via `cargo install` without a bundled release), offer to download a pre-built asset bundle.
     *   **Why / Benefit:** Improves "out-of-the-box" experience for users not using full release bundles. Mimics tools like `deno` or `rust-analyzer`.
