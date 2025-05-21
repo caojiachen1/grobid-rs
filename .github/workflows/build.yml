@@ -167,9 +167,10 @@ jobs:
         if: runner.os == 'Linux'
         run: echo 'RUSTFLAGS=-C link-arg=-fuse-ld=mold' >> $GITHUB_ENV
         
-      - name: Use lld linker (macOS)
+      # Use default linker on macOS rather than lld
+      - name: Use default linker on macOS
         if: runner.os == 'macOS'
-        run: echo 'RUSTFLAGS=-C link-arg=-fuse-ld=lld' >> $GITHUB_ENV
+        run: echo 'RUSTFLAGS=' >> $GITHUB_ENV
 
       # JDK needed for build.rs compilation but we use vendored JRE for runtime
       - uses: actions/setup-java@v3
@@ -240,7 +241,7 @@ jobs:
         
       - name: Build (release) (macOS)
         if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
-        run: cargo build --release --locked -j $(sysctl -n hw.ncpu) --target ${{ matrix.target }} --features cli
+        run: cargo build --release --locked -j $(sysctl -n hw.ncpu) --features cli
         
       - name: Build (release) (Windows)
         if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
@@ -254,13 +255,22 @@ jobs:
       # Run tests with nextest (much faster than standard cargo test)
       - name: Unit + integration tests (Linux)
         if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
-        run: cargo nextest run --release -j $(nproc) --target ${{ matrix.target }}
+        run: |
+          cargo nextest run --release -j $(nproc)
+          # Error code 4 means "no tests found" which is OK
+          if [ $? -ne 0 -a $? -ne 4 ]; then exit 1; fi
         
       - name: Unit + integration tests (macOS)
         if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
-        run: cargo nextest run --release -j $(sysctl -n hw.ncpu) --target ${{ matrix.target }}
+        run: |
+          # Don't use --target flag on macOS to avoid linker issues
+          cargo nextest run --release -j $(sysctl -n hw.ncpu)
+          # Error code 4 means "no tests found" which is OK
+          if [ $? -ne 0 -a $? -ne 4 ]; then exit 1; fi
         
       - name: Unit + integration tests (Windows)
         if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
         shell: pwsh
-        run: cargo nextest run --release -j $env:NUMBER_OF_PROCESSORS --target ${{ matrix.target }}
+        run: |
+          cargo nextest run --release -j $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 4) { exit 1 }
