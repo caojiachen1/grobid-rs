@@ -73,12 +73,31 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 - [ ] **Library API: Serde Structs for JSON Output** (See [JSON Implementation Plan](docs/JSON_IMPLEMENTATION.md))
     *   **Task:** Provide a modular system for Grobid data using Serde structs with clear API boundaries. 
     *   **Why / Benefit:** Improves DX for Rust consumers; type-safe access to data with proper separation of concerns.
+    *   **Status:** ~90% of the work is API plumbing, not algorithms. Main blocker is TEI → Rust parsing.
     *   **Implementation:**
-        *   **Phase 1:** Define comprehensive Serde structs in `src/models/` directory
-        *   **Phase 2:** Create TEI-to-struct converters in `src/converters/` directory
-        *   **Phase 3:** Expose public API functions like `process_header_json()` in library
-        *   **Phase 4:** Update CLI to use the library's JSON functionality
-        *   **Phase 5:** Add proper tests and documentation
+        *   **Phase 1 (Data Models, ~6h):** 
+            * Define Serde structs in `src/models/` directory
+            * Tag structs with `#[serde(rename_all = "camelCase")]` to match Grobid's Java output
+            * Re-export from crate root via `pub use models::*` for convenient imports
+        *   **Phase 2 (TEI Parsing, ~6h):** 
+            * Implement using quick-xml's streaming reader: `Reader::from_str(tei)`
+            * Take advantage of zero-copy parsing to minimize memory usage
+            * Start with simple XPath-like extraction for key elements (`<title>`, `<persName>`, etc.)
+        *   **Phase 3 (JSON Helpers, ~1h):**
+            * Wrap `serde_json::to_string_pretty` for consistent formatting
+            * Add appropriate error variants for serialization failures
+            * Expose functions like `process_header_json()` in the library API
+        *   **Phase 4 (CLI Integration, ~2h):**
+            * Add `--output-format json` flag to CLI commands
+            * Implement progress indicators using indicatif for long-running operations
+            * Generate shell completions & man pages via clap_complete
+        *   **Phase 5 (Tests & Documentation, ~4h):**
+            * Add unit tests for serialization round-trips
+            * Create golden file tests with insta for stable output
+            * Run via cargo-nextest for ~2x speedup in CI
+            * Add documentation with examples in rustdoc
+    *   **Timeline:** Approximately 1 long day / focused weekend sprint
+    *   **Outcome:** Type-safe JSON access both for library users (`grobid_rs::process_header_json()`) and CLI users (`grobid-cli header --output-format json`)
 
 - [x] **Observability: Logging Hooks (`tracing`)**
     *   **Completed:** Integrated tracing crate for structured logging in cache and other modules.
@@ -88,6 +107,16 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
     *   **Task:** Map `GrobidError` variants to `std::process::ExitCode` for machine-readable scriptability.
     *   **Why / Benefit:** Allows scripts to reliably determine outcomes.
     *   **Implementation:** E.g., Invalid PDF = 100, JVM init error = 101, etc.
+    *   **Integration:** Include in error handling documentation and CLI help text for scriptability
+
+- [ ] **CLI: Shell Completions & Man Pages**
+    *   **Task:** Generate completion scripts and man pages for the CLI
+    *   **Why / Benefit:** Improves discoverability and user experience
+    *   **Implementation:**
+        * Use clap_complete to generate completions for Bash/Zsh/Fish/PowerShell
+        * Add to build script: `generate_to(Bash, &mut build_cli(), "grobid-cli", out_dir)?;`
+        * Include generated files in release bundles
+        * Estimated effort: ~30 minutes
 
 - [ ] **Distribution: Auto-download pre-built asset bundle on first run (CLI)**
     *   **Task:** If CLI detects missing assets (e.g., when installed via `cargo install` without a bundled release), offer to download a pre-built asset bundle.
@@ -228,6 +257,14 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 - [ ] **Platform-Specific Optimizations:** Additional tuning for macOS ARM64 (Apple Silicon) performance
 - [ ] **Grobid Version Upgrades:** Streamlined process for updating to newer Grobid versions
 - [ ] **Native GUI Wrapper:** Optional simple GUI frontend for non-technical users
+- [ ] **Release Bundle Automation:** 
+    *   **Task:** Create an `xtask dist` command to automate release bundle creation
+    *   **Implementation:**
+        * Package binary, runtime, one-jar & models into a single tar.zst archive
+        * Upload to GitHub Releases for "download-once-run-everywhere" experience
+        * Include shell completions, README, and license files
+        * Separate bundles per platform (Linux/macOS/Windows)
+    *   **Estimated effort:** ~2 hours
 
 ## Completed Tasks
 
@@ -279,3 +316,15 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 - [ ] **Fuzz Testing (Future Consideration):** For JNI boundaries.
 
 *(Existing sections on Community Engagement, Compatibility Matrix, and Progress Tracking remain relevant)*
+
+## Recommended Third-Party Libraries
+
+The project leverages these well-maintained community libraries:
+
+- **quick-xml**: Fast, low-allocation streaming XML parser (for TEI processing)
+- **serde_json**: JSON serialization with stable ordering (good for testing)
+- **clap_complete**: Shell completion generation
+- **indicatif**: Cross-platform progress bars and spinners
+- **tracing-subscriber**: Structured logging setup
+- **cargo-nextest**: Parallel, deterministic test runner
+- **insta**: Snapshot testing for stable outputs
