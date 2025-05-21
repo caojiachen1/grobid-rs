@@ -1,6 +1,9 @@
 mod build_modules;
 
 use std::{env, fs, path::{Path, PathBuf}};
+use std::io::{self, BufReader, Read, Write};
+use std::fs::File;
+use std::process::Command;
 use anyhow::{Context, Result};
 use dotenv::dotenv;
 use build_modules::{
@@ -27,9 +30,10 @@ fn check_for_vendored_files() -> Option<PathBuf> {
     // Check if required files exist
     let jar_name = format!("{}-{}{}", GROBID_JAR_NAME_PREFIX, GROBID_VERSION, GROBID_ONEJAR_NAME_SUFFIX);
     let jar_path = grobid_dir.join(&jar_name);
+    let jar_zst_path = grobid_dir.join(format!("{}.zst", &jar_name));
     let grobid_home_path = grobid_dir.join(GROBID_HOME_DIR_NAME);
     
-    if jar_path.exists() && grobid_home_path.exists() && jre_dir.exists() {
+    if (jar_path.exists() || jar_zst_path.exists()) && grobid_home_path.exists() && jre_dir.exists() {
         print_cargo_warning("Found vendored Grobid files");
         return Some(vendor_dir);
     }
@@ -47,13 +51,26 @@ fn use_vendored_files(vendor_dir: &Path, deployment_dir: &Path) -> Result<()> {
     // Copy Grobid JAR and home directory
     let vendor_grobid_dir = vendor_dir.join("grobid");
     
-    // Copy JAR file
+    // Copy JAR file (decompressing if needed)
     let jar_name = format!("{}-{}{}", GROBID_JAR_NAME_PREFIX, GROBID_VERSION, GROBID_ONEJAR_NAME_SUFFIX);
     let vendor_jar_path = vendor_grobid_dir.join(&jar_name);
     let target_jar_path = deployment_dir.join(&jar_name);
     
-    fs::copy(&vendor_jar_path, &target_jar_path)
-        .with_context(|| format!("Failed to copy JAR from {} to {}", vendor_jar_path.display(), target_jar_path.display()))?;
+    if vendor_jar_path.exists() {
+        fs::copy(&vendor_jar_path, &target_jar_path)
+            .with_context(|| format!("Failed to copy JAR from {} to {}", vendor_jar_path.display(), target_jar_path.display()))?;
+    } else {
+        // Check for compressed version
+        let compressed_jar_path = vendor_grobid_dir.join(format!("{}.zst", jar_name));
+        if compressed_jar_path.exists() {
+            print_cargo_warning(&format!("Decompressing JAR from {} to {}", compressed_jar_path.display(), target_jar_path.display()));
+            decompress_zstd_file(&compressed_jar_path, &target_jar_path)
+                .with_context(|| format!("Failed to decompress JAR from {} to {}", compressed_jar_path.display(), target_jar_path.display()))?;
+        } else {
+            return Err(anyhow::anyhow!("Neither JAR file nor compressed JAR file found at expected locations"));
+        }
+    }
+    // Process any other compressed files in grobid-home
     
     // Copy grobid-home directory
     let vendor_home_path = vendor_grobid_dir.join(GROBID_HOME_DIR_NAME);
@@ -107,9 +124,55 @@ fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<()> {
         if src_path.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
-            fs::copy(&src_path, &dst_path)?;
+            // Check if this is a compressed file that needs decompression
+            let file_name = src_path.file_name().unwrap().to_string_lossy().to_string();
+            if file_name.ends_with(".zst") {
+                // This is a compressed file, decompress it
+                let target_path = dst_path.with_file_name(file_name.trim_end_matches(".zst"));
+                print_cargo_warning(&format!("Decompressing {} to {}", src_path.display(), target_path.display()));
+                decompress_zstd_file(&src_path, &target_path)?;
+            } else {
+                // Regular file, just copy it
+                fs::copy(&src_path, &dst_path)?;
+            }
         }
     }
+    
+    Ok(())
+}
+
+// Function to decompress a zstd file
+fn decompress_zstd_file(compressed_path: &PathBuf, target_path: &PathBuf) -> Result<()> {
+    if cfg!(unix) {
+        // Try using zstd command line tool if available
+        let result = Command::new("zstd")
+            .args(["-d", "-f", 
+                   compressed_path.to_str().unwrap(),
+                   "-o", target_path.to_str().unwrap()])
+            .output();
+            
+        match result {
+            Ok(output) if output.status.success() => {
+                print_cargo_warning("Successfully decompressed using zstd command");
+                return Ok(());
+            }
+            _ => {
+                print_cargo_warning("zstd command failed or not available, using internal decompression");
+                // Fall back to internal implementation
+            }
+        }
+    }
+    
+    // If command-line tool failed or not on Unix, use Rust implementation
+    let compressed_file = File::open(compressed_path)?;
+    let mut compressed_data = Vec::new();
+    BufReader::new(compressed_file).read_to_end(&mut compressed_data)?;
+    
+    let decompressed_data = zstd::stream::decode_all(io::Cursor::new(compressed_data))
+        .with_context(|| "Failed to decompress zstd data")?;
+    
+    let mut output_file = File::create(target_path)?;
+    output_file.write_all(&decompressed_data)?;
     
     Ok(())
 }

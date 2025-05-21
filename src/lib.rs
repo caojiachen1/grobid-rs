@@ -288,18 +288,30 @@ fn call_engine_process_references(
     engine: JObject<'_>,
     pdf_path: &Path,
 ) -> Result<String, GrobidError> {
-    // Convert Rust Path to Java String
+    // Convert Rust Path to Java File object
+    let file_cls: JClass<'_> = env.find_class("java/io/File")?;
     let j_path_str: JString<'_> = env.new_string(pdf_path.to_string_lossy())?;
-    // Instantiate a new BiblioItem
-    let biblio_cls: JClass<'_> = env.find_class("org/grobid/core/data/BiblioItem")?;
-    let biblio_obj: JObject<'_> = env.new_object(biblio_cls, "()V", &[])?;
-    // Call Engine.processReferences(String, BiblioItem)
-    let j_result_obj: JObject<'_> = env.call_method(
+    let j_file: JObject<'_> = env.new_object(file_cls, "(Ljava/lang/String;)V", &[JValue::from(&j_path_str)])?;
+    
+    // Call Engine.processReferences(File, int)
+    // The int parameter is the consolidation option (0 = no consolidation)
+    let j_bib_list: JObject<'_> = env.call_method(
         engine,
         "processReferences",
-        "(Ljava/lang/String;Lorg/grobid/core/data/BiblioItem;)Ljava/lang/String;",
-        &[JValue::from(&j_path_str), JValue::from(&biblio_obj)],
+        "(Ljava/io/File;I)Ljava/util/List;",
+        &[JValue::from(&j_file), JValue::from(0)],
     )?.l().map_err(GrobidError::from)?;
+    
+    // Call the static method references2TEI to convert BibDataSet list to TEI String
+    let empty_path: JString<'_> = env.new_string("")?;
+    
+    let j_result_obj: JObject<'_> = env.call_static_method(
+        "org/grobid/core/engines/Engine",
+        "references2TEI",
+        "(Ljava/lang/String;Ljava/util/List;)Ljava/lang/String;",
+        &[JValue::from(&empty_path), JValue::from(&j_bib_list)],
+    )?.l().map_err(GrobidError::from)?;
+    
     // Convert Java String to Rust String
     let result_string = env.get_string(&JString::from(j_result_obj))?.into();
     Ok(result_string)

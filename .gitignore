@@ -23,6 +23,10 @@ Thumbs.db
 *.tar.gz
 *.tar.xz
 
+# Allow compressed archives we use for large files
+!*.zst
+!*.xz
+
 # Maven local repository
 .m2/
 .extraction_success
@@ -38,6 +42,19 @@ Thumbs.db
 !/vendor/grobid/**
 !/vendor/jre/
 !/vendor/jre/**
+
+# Exclude large files that exceed GitHub limits
+/vendor/grobid/grobid-core-0.8.2-onejar.jar
+/vendor/grobid/grobid-home/models/patent/citation/model.wapiti
+# All large zip files are excluded
+/vendor/grobid/**/*.zip
+
+# But allow their compressed versions
+!/vendor/grobid/grobid-core-0.8.2-onejar.jar.zst
+!/vendor/grobid/grobid-home/models/patent/citation/model.wapiti.zst
+# grobid-home-0.8.2.zip is not needed as the contents are already extracted
+
+# No longer using split files - we use zstd compression instead
 
 # Never commit staged build output anywhere else
 **/grobid_assets/

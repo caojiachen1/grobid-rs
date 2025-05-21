@@ -45,6 +45,9 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
         // enum OutputFormat { Tei, Json, Bibtex }
         // // enum ProcessType { Fulltext, Header, References, PatentCitation }
         ```
+- [x] **JNI Method Signature Fix for GROBID 0.8.2**
+    *   **Task:** Fix JNI method signature mismatch in `processReferences` to match GROBID 0.8.2 API.
+    *   **Why / Benefit:** Resolves `NoSuchMethodError` by updating from `processReferences(String, BiblioItem)` to `processReferences(File, int)` and correctly handling the return type conversion from `List<BibDataSet>` to TEI string.
 - [x] **Library API: Config Builder**
     *   **Task:** Implement `GrobidConfig::builder()` exposing `GrobidAnalysisConfig` options safely.
     *   **Why / Benefit:** Keeps high-level API stable, allows advanced configuration (coordinates, consolidation) without proliferating function arguments.
@@ -202,6 +205,7 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
     *   **Why / Benefit:** Improves maintainability, readability, and compile times.
 - [ ] **JNI Interactions: Comprehensive Error Handling & Safety**
     *   **Task:** Systematically review all JNI call sites. Convert Java exceptions to specific `GrobidError` variants. Ensure Java exception stack traces are captured.
+    *   - [x] **Fixed method signature mismatch in `processReferences`:** Updated the JNI call to match GROBID 0.8.2's method signature, changing from `processReferences(String, BiblioItem)` to `processReferences(File, int)` with correct return type conversion.
 - [ ] **Memory Management: Audit JNI GlobalRefs**
     *   **Task:** Audit usage of JNI `GlobalRef`s, ensuring they are deleted when no longer needed.
 - [ ] **Build System: Enhancements for Speed, Security, Portability, and Distribution**
@@ -271,6 +275,7 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 - [x] **ARM64 support (Apple Silicon, ARM Linux) (basic runtime confirmed)**
 - [x] **Automatic Grobid resource downloading/management (source-based)**
 - [x] **Example applications (CLI, batch_processing.rs)**
+- [x] **Fixed JNI method signature mismatch in `processReferences` for GROBID 0.8.2 compatibility**
 
 ## Technical Challenges
 *   JNI Stability & Complexity

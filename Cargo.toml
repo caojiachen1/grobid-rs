@@ -27,6 +27,7 @@ anyhow = "1.0"
 sha2 = "0.10"
 rayon = "1.10.0"
 bytes = "1.10"
+zstd = "0.12"
 
 [[bin]]
 name = "grobid-cli"
