@@ -20,22 +20,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install toolchain
+      # Install Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
           
-      # Set up Java JDK
+      # Set up Java JDK for build process
       - name: Set up JDK 11
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
-          
-      # Create vendor directory
-      - name: Create vendor directories
-        run: mkdir -p vendor/grobid
-
+           
+      # Install zstd (needed for decompression)
+      - name: Install zstd (macOS)
+        if: runner.os == 'macOS'
+        run: brew install zstd
+        
+      - name: Install zstd (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y zstd
+        
+      - name: Install zstd (Windows)
+        if: runner.os == 'Windows'
+        run: choco install zstd
+      
       # Build crate (it will use the vendored files automatically)
       - name: cargo build
         run: cargo build --release --target ${{ matrix.target }} --features cli
