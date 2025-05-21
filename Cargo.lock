@@ -623,8 +623,11 @@ dependencies = [
  "java-locator",
  "jni",
  "once_cell",
+ "quick-xml",
  "rayon",
  "reqwest",
+ "serde",
+ "serde_json",
  "sha2",
  "thiserror 1.0.69",
  "zip",
@@ -1231,6 +1234,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02b3e5e68a3a1a02aad3ec490a98007cbc13c37cbe84a3cd7b8e406d76e7f778"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.28.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce5e73202a820a31f8a0ee32ada5e21029c81fd9e3ebf668a40832e4219d9d1"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
