@@ -2,218 +2,118 @@ name: build
 
 on: [push, pull_request]
 
-# Cancel in-progress runs for the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-# Permissions needed for GitHub token
-permissions:
-  contents: read
-  pull-requests: read
 
 env:
   CARGO_TERM_COLOR: always
   GROBID_VERSION: '0.8.2'
 
+# ------------------------------------------------------------------
+#  Re-usable shell snippets (macOS/Linux use Bash; Windows use pwsh)
+# ------------------------------------------------------------------
+defaults:
+  run:
+    shell: bash
+    # GitHub's runners already have zstd on Linux; brew install is ~1 s
+    # Windows helper is handled in step.
+
 jobs:
-  # Fast check job for PRs
-  check:
+
+# Fast syntactic & lint checks – always run
+  lint:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-check-
-      
-      - name: Format check
-        run: cargo fmt -- --check
-      
-      - name: Clippy check
-        run: cargo clippy -- -D warnings
-      
-      - name: Check compilation
-        run: cargo check
 
-  # Main build job for pushes (all platforms)
-  build_push:
-    if: ${{ github.event_name == 'push' }}
+      - uses: Swatinem/rust-cache@v2    # handles registry/git/target
+        with: {save-if: ${{ github.ref == 'refs/heads/main' }}}
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo check --workspace
+
+  # Full build & test (matrix) – push only
+  build:
+    if: github.event_name == 'push'
     strategy:
+      fail-fast: false         # don't cancel other OSes if one fails
       matrix:
         include:
-          - os: ubuntu-latest   # linux‑x64
-            target: x86_64-unknown-linux-gnu
-          - os: macos-14       # macOS arm64
-            target: aarch64-apple-darwin
-          - os: windows-latest # win‑x64
-            target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest   ; target: x86_64-unknown-linux-gnu
+          - os: macos-14        ; target: aarch64-apple-darwin
+          - os: windows-latest  ; target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: {fetch-depth: 0}
 
-      # Install Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
+        with: {targets: ${{ matrix.target }}}
+
+      - uses: Swatinem/rust-cache@v2   # smarter than plain actions/cache
         with:
-          targets: ${{ matrix.target }}
-          
-      # Set up cargo cache
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
+          target-dir: target/${{ matrix.target }}
+          key: ${{ runner.os }}-${{ matrix.target }}
+
+      # Optional: speed up LLVM linking
+      - uses: mozilla-actions/sccache@v0.0.4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ matrix.target }}-
-            ${{ runner.os }}-cargo-
-           
-      # Set up Java JDK for build process
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
+          cache: 's3'
+        env:
+          SCCACHE_GHA_ENABLED: 'true'   # GitHub-hosted cache
+
+      # JDK needed for build.rs compilation but we use vendored JRE for runtime
+      - uses: actions/setup-java@v3
+        with: 
+          distribution: temurin
           java-version: '11'
-          cache: 'maven'
-      
-      # Prepare vendor directory structure
+          cache: false # Don't cache Maven artifacts
+          
+      # Prepare vendor directory for JRE/Grobid
       - name: Create vendor directories (Unix)
-        if: ${{ runner.os != 'Windows' }}
+        if: runner.os != 'Windows'
         run: mkdir -p vendor/grobid
       
       - name: Create vendor directories (Windows)
-        if: ${{ runner.os == 'Windows' }}
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           if (-not (Test-Path vendor)) { New-Item -Path vendor -ItemType Directory }
           if (-not (Test-Path vendor/grobid)) { New-Item -Path vendor/grobid -ItemType Directory }
-           
-      # Install zstd (needed for decompression)
+
+      # Install zstd for decompression (needed for .zst files)
       - name: Install zstd (macOS)
-        if: ${{ runner.os == 'macOS' }}
+        if: runner.os == 'macOS'
         run: brew install zstd
         
       - name: Install zstd (Ubuntu)
-        if: ${{ runner.os == 'Linux' }}
+        if: runner.os == 'Linux'
         run: sudo apt-get install -y zstd
         
-      - name: Install zstd (Windows)
-        if: ${{ runner.os == 'Windows' }}
+      # Windows: add zstd to PATH
+      - if: runner.os == 'Windows'
+        name: Install zstd
         shell: pwsh
         run: |
-          $ZSTD_VERSION = "1.5.5"
-          $ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}/zstd-v${ZSTD_VERSION}-win64.zip"
-          Invoke-WebRequest -Uri $ZSTD_URL -OutFile zstd.zip
-          Expand-Archive -Path zstd.zip -DestinationPath zstd-extract
-          $zstdPath = "$PWD\zstd-extract\zstd-v${ZSTD_VERSION}-win64"
-          Add-Content $env:GITHUB_PATH "$zstdPath"
-          echo "Installed zstd to $zstdPath"
-      
-      # Build crate
-      - name: cargo build
-        run: cargo build --release --target ${{ matrix.target }} --features cli --locked
+          iwr https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip -Out z.zip
+          Expand-Archive z.zip -DestinationPath $env:TEMP\zstd
+          echo "$env:TEMP\zstd\zstd-v1.5.5-win64" | Out-File -Append -FilePath $env:GITHUB_PATH
 
-      # Run fast tests first
-      - name: Run unit tests
+      # ----------------------------------------------------------
+      #  Build → unit tests → integration tests (fast-fail order)
+      # ----------------------------------------------------------
+      - name: Build (release)
+        run: cargo build --release --locked --target ${{ matrix.target }} --features cli
+
+      - name: Unit tests
         run: cargo test --lib --bins --target ${{ matrix.target }} -- --nocapture
 
-      # Run integration tests separately
-      - name: Run integration tests
+      - name: Integration tests
         run: cargo test --test="*" --target ${{ matrix.target }} -- --nocapture
-    
-  # Build job for PRs (Ubuntu only)
-  build_pr:
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
-    env:
-      target: x86_64-unknown-linux-gnu
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # Install Rust toolchain
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target || env.target }}
-          
-      # Set up cargo cache
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ matrix.target || env.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ matrix.target }}-
-            ${{ runner.os }}-cargo-
-           
-      # Set up Java JDK for build process
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '11'
-          cache: 'maven'
-      
-      # Prepare vendor directory structure
-      - name: Create vendor directories (Unix)
-        if: ${{ runner.os != 'Windows' }}
-        run: mkdir -p vendor/grobid
-      
-      - name: Create vendor directories (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          if (-not (Test-Path vendor)) { New-Item -Path vendor -ItemType Directory }
-          if (-not (Test-Path vendor/grobid)) { New-Item -Path vendor/grobid -ItemType Directory }
-           
-      # Install zstd (needed for decompression)
-      - name: Install zstd (macOS)
-        if: ${{ runner.os == 'macOS' }}
-        run: brew install zstd
-        
-      - name: Install zstd (Ubuntu)
-        if: ${{ runner.os == 'Linux' }}
-        run: sudo apt-get install -y zstd
-        
-      - name: Install zstd (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $ZSTD_VERSION = "1.5.5"
-          $ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}/zstd-v${ZSTD_VERSION}-win64.zip"
-          Invoke-WebRequest -Uri $ZSTD_URL -OutFile zstd.zip
-          Expand-Archive -Path zstd.zip -DestinationPath zstd-extract
-          $zstdPath = "$PWD\zstd-extract\zstd-v${ZSTD_VERSION}-win64"
-          Add-Content $env:GITHUB_PATH "$zstdPath"
-          echo "Installed zstd to $zstdPath"
-      
-      # Build crate
-      - name: cargo build
-        run: cargo build --release --target ${{ env.target }} --features cli --locked
-
-      # Run fast tests first
-      - name: Run unit tests
-        run: cargo test --lib --bins --target ${{ env.target }} -- --nocapture
-
-      # Run integration tests separately
-      - name: Run integration tests
-        run: cargo test --test="*" --target ${{ env.target }} -- --nocapture
