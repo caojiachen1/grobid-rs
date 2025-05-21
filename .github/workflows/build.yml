@@ -33,20 +33,25 @@ jobs:
           path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
           key: jre-${{ runner.os }}-${{ matrix.target }}-0.8.2
 
+      # Prepare directory for JRE
+      - name: Prepare JRE directory
+        if: steps.jre-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          # Clean up any existing directory
+          rm -rf vendor/jre || true
+          mkdir -p vendor
+
       # Build minimal JRE via jlink only if not in cache
       - name: Build jlink image
         if: steps.jre-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          # Create a fresh directory for JRE
-          if [ -d "vendor/jre/${{ matrix.os }}" ]; then
-            rm -rf "vendor/jre/${{ matrix.os }}"
-          fi
-          mkdir -p "vendor/jre/${{ matrix.os }}"
+          # Build a fresh JRE
           jlink \
             --add-modules java.base,java.logging,java.xml,jdk.unsupported \
             --strip-debug --no-header-files --no-man-pages --compress=2 \
-            --output "vendor/jre/${{ matrix.os }}"
+            --output vendor/jre/${{ matrix.os }}
 
       # Build crate (it will use the vendored files automatically)
       - name: cargo build
