@@ -114,7 +114,7 @@ jobs:
 
   # Full build & test (matrix) – push only when source code changes
   build:
-    needs: changes
+    needs: [changes, lint]
     if: github.event_name == 'push' && needs.changes.outputs.src == 'true'
     strategy:
       fail-fast: false         # don't cancel other OSes if one fails
