@@ -293,8 +293,11 @@ fn test_cache_pruning() {
         println!("Files before clearing: {}", before_clear);
 
         // Clear the cache - check for correct cache dir
-        println!("Running clear_cache... (cache dir should be: {})", cache_dir.display());
-        
+        println!(
+            "Running clear_cache... (cache dir should be: {})",
+            cache_dir.display()
+        );
+
         // This will be fixed in the implementation, but for now do a manual clear
         let mut manual_removed = 0;
         for entry in fs::read_dir(&cache_dir).expect("Failed to read cache dir") {
@@ -318,7 +321,10 @@ fn test_cache_pruning() {
         let after_clear = count_cache_files();
         println!("Files after clearing: {}", after_clear);
         assert_eq!(after_clear, 0, "Cache should be empty after clearing");
-        assert_eq!(manual_removed, before_clear, "Should have removed all files");
+        assert_eq!(
+            manual_removed, before_clear,
+            "Should have removed all files"
+        );
     }
 
     // Clean up
@@ -332,46 +338,58 @@ fn test_cache_pruning() {
 fn test_cache_size_reporting() {
     // Setup tracing
     setup_tracing();
-    
+
     // Create a temporary directory for caching
     let temp_dir = tempdir().expect("Failed to create temp dir");
     let cache_path = temp_dir.path().to_path_buf();
-    println!("\nRunning test_cache_size_reporting with temp dir: {}", cache_path.display());
+    println!(
+        "\nRunning test_cache_size_reporting with temp dir: {}",
+        cache_path.display()
+    );
 
     // Set environment variable to control cache directory
     env::set_var("GROBID_RS_CACHE_DIR", cache_path.to_str().unwrap());
     println!("Set GROBID_RS_CACHE_DIR to: {}", cache_path.display());
-    
+
     // Verify the cache directory exists
     fs::create_dir_all(&cache_path).expect("Failed to create cache directory");
-    
-    // Create a test file directly in our temp directory 
+
+    // Create a test file directly in our temp directory
     let test_file = cache_path.join("test.txt");
     fs::write(&test_file, "test content").expect("Failed to write test file");
-    
-    // Debug directory contents 
+
+    // Debug directory contents
     println!("Directory contents after creating file:");
     for entry in fs::read_dir(&cache_path).expect("Failed to read dir") {
         if let Ok(entry) = entry {
             println!("  - {}", entry.path().display());
         }
     }
-    
+
     // Verify file exists and has content
     assert!(test_file.exists(), "Test file should exist");
-    assert_eq!(fs::read_to_string(&test_file).unwrap(), "test content", "File should contain test content");
-    
+    assert_eq!(
+        fs::read_to_string(&test_file).unwrap(),
+        "test content",
+        "File should contain test content"
+    );
+
     // Check size is now non-zero by counting directly
-    let file_size = fs::metadata(&test_file).expect("Failed to get metadata").len();
+    let file_size = fs::metadata(&test_file)
+        .expect("Failed to get metadata")
+        .len();
     println!("Actual file size: {} bytes", file_size);
     assert!(file_size > 0, "File size should be non-zero");
 
     // Now check cache size - call it directly using our path
     let cache_size = grobid_rs::get_cache_size().expect("Failed to get cache size");
     println!("Cache size reported: {} bytes", cache_size);
-    
+
     // Assert that cache size is at least equal to our file size
-    assert!(cache_size >= file_size, "Cache size should include our test file size");
+    assert!(
+        cache_size >= file_size,
+        "Cache size should include our test file size"
+    );
 
     // Test human readable size
     let human_size =
@@ -389,7 +407,7 @@ fn test_cache_size_reporting() {
 
     // Clean up
     env::remove_var("GROBID_RS_CACHE_DIR");
-    
+
     println!(
         "Cache dir after env var removal: {:?}",
         grobid_rs::get_cache_dir()

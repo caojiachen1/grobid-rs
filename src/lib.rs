@@ -6,10 +6,10 @@ use std::{
     sync::Mutex,
 };
 
-mod config;
-mod errors;
 mod cache;
 mod cache_prune;
+mod config;
+mod errors;
 
 pub use config::{
     GrobidAnalysisConfig, GrobidAnalysisConfigBuilder, GrobidConfig, GrobidConfigBuilder,
@@ -18,16 +18,13 @@ pub use errors::GrobidError;
 
 // Cache types and functions
 pub use cache::{
-    CacheConfig, OutputType, 
-    process_with_cache, get_cache_path,
-    get_cache_dir, ensure_cache_dir,
+    ensure_cache_dir, get_cache_dir, get_cache_path, process_with_cache, CacheConfig, OutputType,
 };
 
 // Cache management functions
 pub use cache_prune::{
-    get_cache_size, get_human_readable_cache_size,
-    prune_cache, clear_cache, get_cache_summary,
-    list_cache_files,
+    clear_cache, get_cache_size, get_cache_summary, get_human_readable_cache_size,
+    list_cache_files, prune_cache,
 };
 
 /// Log verbosity levels for Grobid

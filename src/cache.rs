@@ -108,26 +108,27 @@ pub fn get_cache_dir() -> Result<PathBuf, GrobidError> {
         let path = PathBuf::from(dir);
         return Ok(path);
     }
-    
+
     // Otherwise use default location in user's home directory
     if let Some(home_dir) = dirs::home_dir() {
         return Ok(home_dir.join(DEFAULT_CACHE_DIR_NAME));
     }
-    
+
     // If home directory can't be determined, fall back to system temp directory
     if let Some(temp_dir) = env::temp_dir().to_str() {
         return Ok(PathBuf::from(temp_dir).join(DEFAULT_CACHE_DIR_NAME));
     }
-    
-    Err(GrobidError::Cache("Failed to determine cache directory location".to_string()))
+
+    Err(GrobidError::Cache(
+        "Failed to determine cache directory location".to_string(),
+    ))
 }
 
 /// Ensure the cache directory exists
 pub fn ensure_cache_dir() -> Result<(), GrobidError> {
     let dir = get_cache_dir()?;
     if !dir.exists() {
-        fs::create_dir_all(&dir)
-            .map_err(|e| GrobidError::Io(e))?;
+        fs::create_dir_all(&dir).map_err(|e| GrobidError::Io(e))?;
     }
     Ok(())
 }
@@ -135,43 +136,41 @@ pub fn ensure_cache_dir() -> Result<(), GrobidError> {
 /// Generate a unique cache key for a PDF
 fn generate_cache_key(pdf_path: &Path) -> Result<String, GrobidError> {
     // Get file metadata for uniqueness
-    let metadata = fs::metadata(pdf_path)
-        .map_err(|e| GrobidError::Io(e))?;
-    
+    let metadata = fs::metadata(pdf_path).map_err(|e| GrobidError::Io(e))?;
+
     // Generate a cache key based on:
     // 1. Absolute path (normalized)
     // 2. File size
     // 3. Last modified time
-    let canonical_path = pdf_path.canonicalize()
-        .map_err(|e| GrobidError::Io(e))?;
-    
+    let canonical_path = pdf_path.canonicalize().map_err(|e| GrobidError::Io(e))?;
+
     let file_size = metadata.len();
-    
+
     // Get modified time or use current time if unavailable
-    let modified = metadata.modified()
-        .unwrap_or_else(|_| SystemTime::now());
-    
+    let modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
+
     // Convert modified time to seconds since epoch
     let modified_secs = match modified.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(duration) => duration.as_secs(),
         Err(_) => 0,
     };
-    
+
     // Create a key combining these elements
-    let key = format!("{}_{}_{}",
+    let key = format!(
+        "{}_{}_{}",
         canonical_path.to_string_lossy(),
         file_size,
         modified_secs
     );
-    
+
     // Hash the key to create a fixed-length identifier
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
     key.hash(&mut hasher);
     let hash = hasher.finish();
-    
+
     Ok(format!("{:016x}", hash))
 }
 
@@ -180,67 +179,70 @@ pub fn get_cache_path(pdf_path: &Path, output_type: OutputType) -> Result<PathBu
     let cache_dir = get_cache_dir()?;
     let cache_key = generate_cache_key(pdf_path)?;
     let extension = output_type.to_extension();
-    
+
     Ok(cache_dir.join(format!("{}.{}", cache_key, extension)))
 }
 
 /// Process a PDF using the cache
-/// 
+///
 /// This function takes a PDF path and a processing function. It will:
 /// 1. Check if a valid cache entry exists (if enabled and not forced to reprocess)
 /// 2. Return the cached result if found
 /// 3. Otherwise, call the processing function and cache the result
 pub fn process_with_cache<F>(
-    pdf_path: &Path, 
+    pdf_path: &Path,
     output_type: OutputType,
     config: CacheConfig,
-    process_fn: F
-) -> Result<String, GrobidError> 
+    process_fn: F,
+) -> Result<String, GrobidError>
 where
-    F: FnOnce() -> Result<String, GrobidError>
+    F: FnOnce() -> Result<String, GrobidError>,
 {
     // If cache is disabled, just call the processor function
     if !config.enabled {
         return process_fn();
     }
-    
+
     ensure_cache_dir()?;
     let cache_path = get_cache_path(pdf_path, output_type)?;
-    
+
     // Check if we can use the cache
     if !config.force_reprocess && config.skip_existing && cache_path.exists() {
         // Read from cache
         let start_time = SystemTime::now();
-        let content = fs::read_to_string(&cache_path)
-            .map_err(|e| GrobidError::Io(e))?;
-        
+        let content = fs::read_to_string(&cache_path).map_err(|e| GrobidError::Io(e))?;
+
         // Calculate time saved
         let elapsed = SystemTime::now()
             .duration_since(start_time)
             .unwrap_or_else(|_| std::time::Duration::from_millis(0));
-        
+
         // Estimate time saved (assume processing takes at least 500ms)
         let time_saved = std::time::Duration::from_millis(500)
             .checked_sub(elapsed)
             .unwrap_or_else(|| std::time::Duration::from_millis(0));
-        
+
         // Record cache hit
         record_hit(content.len(), time_saved.as_millis() as u64);
-        
+
         return Ok(content);
     }
-    
+
     // Process the file
     let result = process_fn()?;
-    
+
     // Write to cache
     if let Err(e) = fs::write(&cache_path, &result) {
         // Non-fatal error, just log and continue
-        eprintln!("Failed to write to cache file {}: {}", cache_path.display(), e);
+        eprintln!(
+            "Failed to write to cache file {}: {}",
+            cache_path.display(),
+            e
+        );
     } else {
         // Record cache miss with successful write
         record_miss(result.len());
     }
-    
+
     Ok(result)
 }

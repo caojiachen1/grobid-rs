@@ -17,6 +17,7 @@ grobid-rs enables Rust applications to leverage Grobid's powerful document proce
 - Support for parallel processing with the `parallel` feature
 - Support for offline builds with vendored dependencies
 - Optimized build system with parallel downloads and streaming extraction
+- Performance-optimized caching with automatic pruning for faster re-processing
 
 ## Installation
 
@@ -72,15 +73,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     grobid_rs::init_with_config(&config)?;
     
     // Process a PDF file
-    let pdf_path = Path::new("path/to/document.pdf");
-    let header_xml = grobid_rs::process_header(pdf_path)?;
+        let pdf_path = Path::new("path/to/document.pdf");
+        let header_xml = grobid_rs::process_header(pdf_path)?;
     
-    // The result is TEI XML containing the extracted header information
-    println!("Extracted header: {}", header_xml);
+        // The result is TEI XML containing the extracted header information
+        println!("Extracted header: {}", header_xml);
     
-    Ok(())
-}
-```
+        // Use caching for faster reprocessing
+        let cache_config = grobid_rs::CacheConfig {
+            enabled: true,
+            skip_existing: true,
+            force_reprocess: false,
+        };
+    
+        // Process with caching
+        let cached_result = grobid_rs::process_with_cache(
+            pdf_path,
+            grobid_rs::OutputType::Tei,
+            cache_config,
+            || grobid_rs::process_header(pdf_path)
+        )?;
+    
+        // Manage cache size to prevent unbounded growth
+        grobid_rs::prune_cache(1024 * 1024 * 100)?; // Limit to 100MB
+    
+        // Get cache usage information
+        let summary = grobid_rs::get_cache_summary()?;
+        println!("Cache status: {}", summary);
+    
+        Ok(())
+    }
+    ```
 
 ## CLI Usage
 
@@ -97,6 +120,12 @@ grobid-cli --pdf-file /path/to/document.pdf --grobid-base /path/to/grobid-resour
   -D http.proxyHost=proxy.example.com \
   -D http.proxyPort=8080 \
   -J "-Xss2m"
+
+# Caching options
+grobid-cli --pdf-file /path/to/document.pdf --grobid-base /path/to/grobid-resources \
+  --cache-enabled \
+  --skip-existing \
+  --max-cache-size 100M
 ```
 
 ## Project Structure

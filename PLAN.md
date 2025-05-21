@@ -143,7 +143,7 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 ### P2 (Lower Priority / Enhancements)
 
-- [ ] **Performance: Cache Layer**
+- [x] **Performance: Cache Layer**
     *   **Task:** Implement caching for processed outputs (`--skip-existing`, `--force-reprocess`).
     *   **Why / Benefit:** Huge speed-up on re-runs (CI, development).
     *   **Implementation:**
@@ -151,6 +151,7 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
         *   Store outputs per-kind: `<hash>.tei`, `<hash>.json`.
         *   If config flags differ significantly, user passes `--force-reprocess`.
         *   Library API: `fn fulltext_cached<P: AsRef<Path>>(pdf: P, cache_dir: P) -> Result<PathBuf>` that writes TEI to `cache_dir/<sha>.tei`.
+        *   ✅ Added cache pruning functionality to prevent unbounded cache growth.
 - [ ] **Library API: Serde Structs for JSON Output**
     *   **Task:** Provide Serde structs for common Grobid outputs (header, citations) and functions to deserialize into them.
     *   **Why / Benefit:** Improves DX for Rust consumers; type-safe access to data.
