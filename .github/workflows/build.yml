@@ -42,7 +42,7 @@ jobs:
 
   # Fast syntactic & lint checks
   lint:
-    runs-on: ubuntu-22.04-8core # 8 vCPU • 32 GB RAM for faster builds
+    runs-on: ubuntu-latest # Standard GitHub runner
     steps:
       - uses: actions/checkout@v4
 
@@ -103,7 +103,7 @@ jobs:
       fail-fast: false         # don't cancel other OSes if one fails
       matrix:
         include:
-          - os: ubuntu-22.04-8core
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: macos-14
             target: aarch64-apple-darwin
