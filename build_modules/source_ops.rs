@@ -2,6 +2,7 @@ use crate::build_modules::common::*;
 use crate::build_modules::utils::verify_sha256;
 use anyhow::anyhow;
 use bytes::Buf;
+use std::num::Integer;
 use std::sync::Mutex;
 
 /// Optimized parallel download with range support and resume capability
@@ -47,6 +48,7 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
     // Pre-allocate file once
     let file = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .read(true)
         .open(to)
@@ -71,7 +73,7 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
     } else {
         // ranged – 8 × 8 MiB (or fewer)
         const CHUNK: u64 = 8 * 1024 * 1024;
-        let n_chunks = ((len + CHUNK - 1) / CHUNK) as usize;
+        let n_chunks = len.div_ceil(CHUNK) as usize;
         let file_mutex = Mutex::new(file);
         (0..n_chunks).into_par_iter().try_for_each(|i| {
             let start = i as u64 * CHUNK;
@@ -112,7 +114,7 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
     pb.finish_with_message("downloaded");
 
     // Verify checksum
-    if let Err(_) = verify_sha256(to, expect_sha256) {
+    if verify_sha256(to, expect_sha256).is_err() {
         bail!("SHA-256 mismatch after download");
     }
     Ok(())
