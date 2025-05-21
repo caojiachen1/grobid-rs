@@ -1,0 +1,50 @@
+name: build
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest   # linux‑x64
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14       # macOS arm64
+            target: aarch64-apple-darwin
+          - os: windows-latest # win‑x64
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1️⃣ Install toolchain
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # 2️⃣ Download Grobid + models
+      - name: Fetch Grobid assets
+        run: |
+          curl -L -o grobid.zip https://github.com/kermitt2/grobid/releases/download/v0.8.2/grobid-0.8.2-onejar.zip
+          unzip -q grobid.zip -d tmp
+          mv tmp/grobid-0.8.2/grobid-core-0.8.2-onejar.jar grobid/grobid-core.jar
+          mv tmp/grobid-0.8.2/grobid-home grobid/
+
+      # 3️⃣ Build minimal JRE via jlink
+      - name: Build jlink image
+        run: |
+          jlink \
+            --add-modules java.base,java.logging,java.xml,jdk.unsupported \
+            --strip-debug --no-header-files --no-man-pages --compress=2 \
+            --output runtime/${{ matrix.os }}
+
+      # 4️⃣ Build crate
+      - name: cargo build
+        env:
+          JAVA_HOME: ${{ github.workspace }}/runtime/${{ matrix.os }}
+        run: cargo build --release --target ${{ matrix.target }} --features cli
+
+      # 5️⃣ Run integration test (parse sample.pdf)
+      - name: Test end‑to‑end
+        env:
+          JAVA_HOME: ${{ github.workspace }}/runtime/${{ matrix.os }}
+        run: cargo test --target ${{ matrix.target }} 
