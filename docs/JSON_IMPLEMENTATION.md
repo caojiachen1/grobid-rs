@@ -10,7 +10,8 @@ This document outlines the implementation plan for adding comprehensive JSON out
 2. Implement TEI to struct conversion utilities
 3. Provide library API functions for JSON output
 4. Integrate with CLI in a modular way
-5. Add appropriate tests and documentation
+5. Ensure compatibility with HTTP service API
+6. Add appropriate tests and documentation
 
 ## Implementation Phases
 
@@ -229,7 +230,7 @@ This document outlines the implementation plan for adding comprehensive JSON out
    }
    ```
 
-### Phase 4: CLI Integration
+### Phase 4: CLI and HTTP Integration
 
 **Tasks:**
 
@@ -277,6 +278,39 @@ This document outlines the implementation plan for adding comprehensive JSON out
            write_output(&output, &args.output_file)?;
        },
        // ...
+   }
+   ```
+
+3. Ensure HTTP service compatibility:
+   ```rust
+   // In an HTTP route handler (e.g., axum or actix-web)
+   async fn process_header_document(
+       multipart: Multipart,
+       accept: Option<HeaderValue>,
+   ) -> impl IntoResponse {
+       // Extract PDF from multipart form
+       let pdf_bytes = extract_pdf_from_multipart(multipart).await?;
+       let temp_file = save_to_temp_file(pdf_bytes).await?;
+       
+       // Determine output format based on Accept header
+       let output = if accept_json(accept) {
+           grobid_rs::process_header_json(&temp_file)?
+       } else {
+           grobid_rs::process_header(&temp_file)?
+       };
+       
+       // Set appropriate content type and return
+       let content_type = if accept_json(accept) {
+           "application/json"
+       } else {
+           "application/tei+xml"
+       };
+       
+       (
+           StatusCode::OK,
+           [(header::CONTENT_TYPE, content_type)],
+           output
+       )
    }
    ```
 
@@ -409,8 +443,9 @@ The implementation will be considered successful when:
 1. **Library API**: `process_header_json`, `process_references_json`, and other JSON functions are available in the library API
 2. **Type Safety**: All outputs are properly typed with comprehensive Serde structs
 3. **CLI Integration**: CLI commands use the library's JSON functions
-4. **Test Coverage**: Proper unit and integration tests cover the functionality
-5. **Documentation**: Well-documented API with examples
+4. **HTTP Compatibility**: JSON output can be returned from HTTP endpoints matching Grobid's servlet API
+5. **Test Coverage**: Proper unit and integration tests cover the functionality
+6. **Documentation**: Well-documented API with examples
 
 ## Future Enhancements
 
@@ -418,3 +453,6 @@ The implementation will be considered successful when:
 2. Support for custom serialization options (pretty-print, minified)
 3. Add more specialized structs for specific document types (patents, etc.)
 4. Implement incremental parsing for very large documents
+5. Add content negotiation for HTTP endpoints (Accept: application/json vs application/tei+xml)
+6. Support streaming JSON responses for large documents in HTTP API
+7. Add OpenAPI/Swagger documentation for the HTTP service

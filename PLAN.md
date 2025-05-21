@@ -123,6 +123,26 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
     *   **Why / Benefit:** Improves "out-of-the-box" experience for users not using full release bundles. Mimics tools like `deno` or `rust-analyzer`.
     *   **Implementation:** Check for assets; if missing, prompt user (or use a flag), show spinner, download pre-built bundle (from GitHub Releases) to a standard cache location (e.g., `$XDG_CACHE_HOME/grobid-rs`).
 
+- [ ] **HTTP API Service: Grobid-Compatible REST Endpoints**
+    *   **Task:** Build a Rust HTTP server that faithfully replicates the official Grobid servlet API endpoints.
+    *   **Why / Benefit:** Enables zero-migration for existing Grobid users while eliminating heavy Java/Jetty dependencies. Reduces memory usage (~120MB vs 500-700MB), improves cold-start times, and simplifies deployment.
+    *   **Implementation:**
+        * Use axum or actix-web framework for HTTP routing
+        * Implement same endpoints: `/api/processHeaderDocument`, `/api/processFulltextDocument`, etc.
+        * Match multipart upload behavior, content types, and status codes
+        * Use grobid_rs engine pool with proper back-pressure (return 503 when queue full)
+        * Add OpenAPI specification for documentation
+    *   **Estimated Effort:** ~1 work week
+    *   **Architecture:**
+        * Rust HTTP server with routes mapping to grobid_rs functions
+        * Streaming upload for large PDFs to avoid memory issues
+        * Identical response formats and headers for transparent replacement
+        * Configuration via TOML/env vars to match Grobid servlet options
+    *   **Recommended Timeline:**
+        * Implement after core CLI/SDK is complete
+        * Start with minimal `/api/isAlive` and incrementally add endpoints
+        * Package as multi-arch container alongside existing distributions
+
 ### P3 (Future Polish / Advanced)
 
 - [ ] **Packaging: CLI Completions, Man Pages, and System Packages**
@@ -257,6 +277,8 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 - [ ] **Platform-Specific Optimizations:** Additional tuning for macOS ARM64 (Apple Silicon) performance
 - [ ] **Grobid Version Upgrades:** Streamlined process for updating to newer Grobid versions
 - [ ] **Native GUI Wrapper:** Optional simple GUI frontend for non-technical users
+- [ ] **Cloud-Native Deployment:** Ready-to-use Dockerfile, Helm chart, and GitHub Action for publishing containers
+- [ ] **Observability Integration:** Add OpenTelemetry/Prometheus metrics for HTTP service performance monitoring
 - [ ] **Release Bundle Automation:** 
     *   **Task:** Create an `xtask dist` command to automate release bundle creation
     *   **Implementation:**
@@ -328,3 +350,7 @@ The project leverages these well-maintained community libraries:
 - **tracing-subscriber**: Structured logging setup
 - **cargo-nextest**: Parallel, deterministic test runner
 - **insta**: Snapshot testing for stable outputs
+- **axum/actix-web**: HTTP framework for REST API implementation
+- **multer**: Multipart form processing for PDF uploads
+- **tokio**: Async runtime for HTTP service
+- **tower**: Middleware stack for HTTP service (rate limiting, logging)
