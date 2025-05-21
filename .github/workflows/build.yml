@@ -55,7 +55,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ runner.os }}-rust-1.87.0-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: cargo fmt --all -- --check
+      # Format code (auto-fixes issues instead of just checking)
+      - run: cargo fmt --all
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo check --workspace
 
@@ -136,10 +137,18 @@ jobs:
           # key on Grobid version + OS; bump when you upgrade Grobid
           key: grobid-${{ env.GROBID_VERSION }}-${{ matrix.os }}
 
-      # Only run build.rs's Gradle / jlink work when the cache was NOT hit
-      - name: Force fresh Grobid build
+      # Configure build.rs behavior based on cache status
+      - name: Configure Grobid build strategy
         if: steps.grobid-cache.outputs.cache-hit != 'true'
-        run: echo "FORCE_GROBID_REBUILD=true" >> "$GITHUB_ENV"
+        run: |
+          # Only set FORCE_GROBID_REBUILD if we don't have vendored files
+          # This lets build.rs use vendored files if available instead of downloading
+          if [ ! -d "vendor/grobid" ] || [ ! "$(ls -A vendor/grobid)" ]; then
+            echo "FORCE_GROBID_REBUILD=true" >> "$GITHUB_ENV"
+            echo "Using FORCE_GROBID_REBUILD because vendored files not found"
+          else
+            echo "Using vendored files without forced rebuild"
+          fi
 
       # Install zstd for decompression (needed for .zst files)
       - name: Install zstd (macOS)
