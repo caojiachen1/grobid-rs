@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // but the library should use the vendored files automatically.
     println!("Initializing Grobid...");
     let config = grobid_rs::GrobidConfig::new(Path::new("."));
-    match grobid_rs::init_with_config(&config) {
+    match grobid_rs::init(&config) {
         Ok(_) => {
             println!("SUCCESS: Grobid initialized successfully!");
             println!("Vendored files are working correctly.");

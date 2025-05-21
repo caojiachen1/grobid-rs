@@ -1,8 +1,8 @@
 use crate::cli_modules::output::{create_spinner, display_cache_stats, write_output};
-use crate::cli_modules::types::{CliExitCode, OutputFormat};
+use crate::cli_modules::types::{CliExitCode, JsonFormat, OutputFormat};
+use grobid_rs::format::FormatConverter;
 use grobid_rs::{
     fulltext_to_tei_cached, process_header_cached, process_references_cached, CacheConfig,
-    FormatConverter,
 };
 use std::path::Path;
 use tracing::error;
@@ -14,6 +14,7 @@ pub fn process_header(
     output_file: &Option<std::path::PathBuf>,
     cache_config: CacheConfig,
     show_stats: bool,
+    json_format: JsonFormat,
 ) -> CliExitCode {
     // Create progress spinner
     let message = format!("Processing header from PDF: {}", pdf_file.display());
@@ -43,14 +44,17 @@ pub fn process_header(
     // Convert to requested format
     let output = match output_format {
         OutputFormat::Tei => tei_result,
-        OutputFormat::Json => match FormatConverter::tei_to_json(&tei_result) {
-            Ok(json) => json,
-            Err(e) => {
-                error!("Failed to convert TEI to JSON: {}", e);
-                eprintln!("Error: Failed to convert TEI to JSON: {}", e);
-                return CliExitCode::FormatConversionError;
+        OutputFormat::Json => {
+            let pretty = matches!(json_format, JsonFormat::Pretty);
+            match FormatConverter::header_to_json_with_options(&tei_result, pretty) {
+                Ok(json) => json,
+                Err(e) => {
+                    error!("Failed to convert header TEI to JSON: {}", e);
+                    eprintln!("Error: Failed to convert header TEI to JSON: {}", e);
+                    return CliExitCode::FormatConversionError;
+                }
             }
-        },
+        }
         OutputFormat::Text => match FormatConverter::tei_to_text(&tei_result) {
             Ok(text) => text,
             Err(e) => {
@@ -90,6 +94,7 @@ pub fn process_fulltext(
     output_file: &Option<std::path::PathBuf>,
     cache_config: CacheConfig,
     show_stats: bool,
+    json_format: JsonFormat,
 ) -> CliExitCode {
     // Create progress spinner
     let message = format!("Processing full text from PDF: {}", pdf_file.display());
@@ -119,14 +124,17 @@ pub fn process_fulltext(
     // Convert to requested format
     let output = match output_format {
         OutputFormat::Tei => tei_result,
-        OutputFormat::Json => match FormatConverter::tei_to_json(&tei_result) {
-            Ok(json) => json,
-            Err(e) => {
-                error!("Failed to convert TEI to JSON: {}", e);
-                eprintln!("Error: Failed to convert TEI to JSON: {}", e);
-                return CliExitCode::FormatConversionError;
+        OutputFormat::Json => {
+            let pretty = matches!(json_format, JsonFormat::Pretty);
+            match FormatConverter::references_to_json_with_options(&tei_result, pretty) {
+                Ok(json) => json,
+                Err(e) => {
+                    error!("Failed to convert references TEI to JSON: {}", e);
+                    eprintln!("Error: Failed to convert references TEI to JSON: {}", e);
+                    return CliExitCode::FormatConversionError;
+                }
             }
-        },
+        }
         OutputFormat::Text => match FormatConverter::tei_to_text(&tei_result) {
             Ok(text) => text,
             Err(e) => {
@@ -166,6 +174,7 @@ pub fn process_references(
     output_file: &Option<std::path::PathBuf>,
     cache_config: CacheConfig,
     show_stats: bool,
+    json_format: JsonFormat,
 ) -> CliExitCode {
     // Create progress spinner
     let message = format!("Extracting references from PDF: {}", pdf_file.display());
@@ -195,14 +204,17 @@ pub fn process_references(
     // Convert to requested format
     let output = match output_format {
         OutputFormat::Tei => tei_result,
-        OutputFormat::Json => match FormatConverter::tei_to_json(&tei_result) {
-            Ok(json) => json,
-            Err(e) => {
-                error!("Failed to convert TEI to JSON: {}", e);
-                eprintln!("Error: Failed to convert TEI to JSON: {}", e);
-                return CliExitCode::FormatConversionError;
+        OutputFormat::Json => {
+            let pretty = matches!(json_format, JsonFormat::Pretty);
+            match FormatConverter::tei_to_json_with_options(&tei_result, pretty) {
+                Ok(json) => json,
+                Err(e) => {
+                    error!("Failed to convert TEI to JSON: {}", e);
+                    eprintln!("Error: Failed to convert TEI to JSON: {}", e);
+                    return CliExitCode::FormatConversionError;
+                }
             }
-        },
+        }
         OutputFormat::Text => match FormatConverter::tei_to_text(&tei_result) {
             Ok(text) => text,
             Err(e) => {

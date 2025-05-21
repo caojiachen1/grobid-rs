@@ -1,5 +1,5 @@
 use clap::Parser;
-use grobid_rs::{init_with_config, reset_cache_stats, CacheConfig, GrobidConfig};
+use grobid_rs::{init, is_initialized, reset_cache_stats, CacheConfig, GrobidConfig};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::IsTerminal;
 use std::process::ExitCode;
@@ -78,22 +78,29 @@ fn main() -> ExitCode {
     };
 
     // Initialize Grobid
-    let init_result = init_with_config(&config);
+    let init_result = init(&config);
 
     // Stop the spinner
     if let Some(pb) = spinner {
         if init_result.is_ok() {
-            pb.finish_with_message("Grobid engine initialized successfully.");
+            pb.finish_with_message("  Grobid engine initialized successfully.  ");
         } else {
-            pb.finish_with_message("Grobid engine initialization failed.");
+            pb.finish_with_message("  Grobid engine initialization failed!  ");
         }
     }
 
-    // Handle initialization result
+    // Handle initialization errors
     if let Err(e) = init_result {
-        error!("Grobid initialization failed: {}", e);
-        eprintln!("Error: Grobid initialization failed: {}", e);
-        return CliExitCode::from(e).into();
+        error!("Failed to initialize Grobid: {}", e);
+        eprintln!("Error: Failed to initialize Grobid: {}", e);
+        return CliExitCode::JvmInitError.into();
+    }
+
+    // Verify that initialization was successful
+    if !is_initialized() {
+        error!("Grobid engine initialization did not complete properly");
+        eprintln!("Error: Grobid engine initialization did not complete properly");
+        return CliExitCode::NotInitialized.into();
     }
 
     // Set up cache configuration
@@ -114,6 +121,7 @@ fn main() -> ExitCode {
             &args.output_file,
             cache_config,
             args.stats,
+            args.json_format,
         ),
         Commands::Fulltext {
             pdf_file,
@@ -124,6 +132,7 @@ fn main() -> ExitCode {
             &args.output_file,
             cache_config,
             args.stats,
+            args.json_format,
         ),
         Commands::References {
             pdf_file,
@@ -134,6 +143,7 @@ fn main() -> ExitCode {
             &args.output_file,
             cache_config,
             args.stats,
+            args.json_format,
         ),
     };
 

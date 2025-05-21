@@ -26,7 +26,7 @@ where
 }
 
 /// Call a Grobid engine method with a file input parameter
-pub(crate) fn call_engine_process_method_with_file_input(
+pub(crate) fn _call_engine_process_method_with_file_input(
     handle: &mut JniHandle,
     method_name: &str,
     pdf_path: &Path,

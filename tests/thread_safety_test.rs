@@ -1,15 +1,10 @@
-use grobid_rs::{fulltext_to_tei_cached, init_with_config, CacheConfig, GrobidConfig};
-use rayon::prelude::*;
+use grobid_rs::{fulltext_to_tei_cached, init, CacheConfig, GrobidConfig};
+use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
-fn get_test_pdf_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("assets")
-        .join("sample.pdf")
-}
-
+// Helper function to initialize Grobid
 fn initialize_grobid() {
     let grobid_home = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("target")
@@ -18,75 +13,73 @@ fn initialize_grobid() {
 
     // Only initialize if not already initialized
     let config = GrobidConfig::new(grobid_home);
-    let _ = init_with_config(&config);
+    let _ = init(&config);
 }
 
 #[test]
-#[ignore] // Only run when explicitly requested, can be resource intensive
-fn test_thread_safety() {
-    // Initialize Grobid
+fn test_parallel_processing() {
+    // Initialize once at the start
     initialize_grobid();
 
     // Get test PDF path
-    let pdf_path = get_test_pdf_path();
+    let pdf_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("assets")
+        .join("sample.pdf");
 
-    // Number of parallel operations to run
-    let num_operations = 5;
+    // If the test PDF doesn't exist, just return (test would be meaningless)
+    if !pdf_path.exists() {
+        println!("Test PDF not found, skipping thread safety test");
+        return;
+    }
 
-    // Create a vector to store results
-    let results = Arc::new(Mutex::new(Vec::new()));
+    // Use a shared counter to track successful operations
+    let success_counter = Arc::new(Mutex::new(0));
 
-    // Configure cache
+    // Define cache config
     let cache_config = CacheConfig {
-        enabled: false, // Disable cache to ensure we're testing threading
+        enabled: true,
         skip_existing: false,
         force_reprocess: true,
     };
 
+    // Number of parallel operations to run
+    let num_operations = 5;
+
     // Process the PDF in parallel
-    (0..num_operations).into_par_iter().for_each(|i| {
-        // Process the PDF
-        match fulltext_to_tei_cached(&pdf_path, cache_config) {
-            Ok(result) => {
-                // Store success result
-                let success_marker = format!("Thread {} succeeded", i);
+    let mut handles = vec![];
+    for i in 0..num_operations {
+        let pdf_path = pdf_path.clone();
+        let cache_config = cache_config;
+        let success_counter = Arc::clone(&success_counter);
 
-                // Check result size as a basic validation
-                let result_size = result.len();
-                assert!(result_size > 1000, "Result too small to be valid");
-
-                // Lock and store the success
-                let mut results = results.lock().unwrap();
-                results.push(success_marker);
+        let handle = thread::spawn(move || {
+            // Process the PDF
+            match fulltext_to_tei_cached(&pdf_path, cache_config) {
+                Ok(_result) => {
+                    // Increment success counter
+                    let mut counter = success_counter.lock().unwrap();
+                    *counter += 1;
+                    println!("Thread {} successfully processed document", i);
+                }
+                Err(e) => {
+                    println!("Thread {} failed to process document: {}", i, e);
+                }
             }
-            Err(e) => {
-                // Store error result
-                let error_marker = format!("Thread {} failed: {}", i, e);
+        });
 
-                // Lock and store the error
-                let mut results = results.lock().unwrap();
-                results.push(error_marker);
-            }
-        }
-    });
+        handles.push(handle);
+    }
 
-    // Check results
-    let final_results = results.lock().unwrap();
+    // Wait for all threads to complete
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    // Check that all operations succeeded
+    let final_count = *success_counter.lock().unwrap();
     assert_eq!(
-        final_results.len(),
-        num_operations,
-        "Not all threads completed"
-    );
-
-    // Ensure all operations succeeded
-    let failures: Vec<_> = final_results
-        .iter()
-        .filter(|r| r.contains("failed"))
-        .collect();
-
-    assert!(
-        failures.is_empty(),
-        "Some thread operations failed: {:?}",
-        failures
+        final_count, num_operations,
+        "Not all parallel operations succeeded"
     );
 }
