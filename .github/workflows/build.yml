@@ -1,6 +1,12 @@
 name: build
 on: [push, pull_request]
 
+env:
+  CARGO_TERM_COLOR: always
+  GROBID_VERSION: 0.8.2               # keep one source of truth
+  GROBID_ZIP: grobid-${{ env.GROBID_VERSION }}-onejar.zip
+  GROBID_CACHE_DIR: ${{ github.workspace }}/.grobid-cache
+
 jobs:
   build:
     strategy:
@@ -21,30 +27,95 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # 2️⃣ Download Grobid + models
-      - name: Fetch Grobid assets
-        run: |
-          curl -L -o grobid.zip https://github.com/kermitt2/grobid/releases/download/v0.8.2/grobid-0.8.2-onejar.zip
-          unzip -q grobid.zip -d tmp
-          mv tmp/grobid-0.8.2/grobid-core-0.8.2-onejar.jar grobid/grobid-core.jar
-          mv tmp/grobid-0.8.2/grobid-home grobid/
+      # -----------------------------------------------
+      # Restore (or later save) the Grobid ZIP or .zst
+      # -----------------------------------------------
+      - name: Restore Grobid cache
+        id: grobid-cache
+        uses: actions/cache@v4
+        with:
+          # anything placed here will be cached
+          path: ${{ env.GROBID_CACHE_DIR }}
+          key: grobid-${{ env.GROBID_VERSION }}-bundle
+          restore-keys: |
+            grobid-${{ env.GROBID_VERSION }}
 
-      # 3️⃣ Build minimal JRE via jlink
-      - name: Build jlink image
+      # -----------------------------------------------
+      # Fetch only if the cache miss occurred
+      # -----------------------------------------------
+      - name: Download Grobid release ZIP
+        if: steps.grobid-cache.outputs.cache-hit != 'true'
         run: |
+          mkdir -p "${{ env.GROBID_CACHE_DIR }}"
+          curl -fsSL -o "${{ env.GROBID_CACHE_DIR }}/${{ env.GROBID_ZIP }}" \
+            "https://github.com/kermitt2/grobid/releases/download/v${{ env.GROBID_VERSION }}/${{ env.GROBID_ZIP }}"
+      
+      # -----------------------------------------------
+      # Extract or decompress into vendor directory
+      # -----------------------------------------------
+      - name: Prepare vendor directory
+        run: mkdir -p vendor/grobid vendor/jre
+        
+      - name: Check for compressed Grobid assets
+        id: check-zst
+        shell: bash
+        run: |
+          if [ -f "vendor/grobid/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar.zst" ] && [ -d "vendor/grobid/grobid-home.zst" ]; then
+            echo "compressed_assets=true" >> $GITHUB_OUTPUT
+          else
+            echo "compressed_assets=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Use compressed assets if available
+      - name: Decompress Grobid assets
+        if: steps.check-zst.outputs.compressed_assets == 'true'
+        run: |
+          # The exact decompression commands will depend on your build.rs implementation
+          # This is a placeholder showing the concept
+          cp vendor/grobid/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar.zst ${{ env.GROBID_CACHE_DIR }}/
+          cp -r vendor/grobid/grobid-home.zst ${{ env.GROBID_CACHE_DIR }}/
+          
+          # Your build.rs will handle the decompression
+
+      # Extract from ZIP if no compressed assets
+      - name: Extract from Grobid ZIP
+        if: steps.check-zst.outputs.compressed_assets == 'false'
+        run: |
+          unzip -q "${{ env.GROBID_CACHE_DIR }}/${{ env.GROBID_ZIP }}" -d tmp
+          mv tmp/grobid-${{ env.GROBID_VERSION }}/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar vendor/grobid/
+          mv tmp/grobid-${{ env.GROBID_VERSION }}/grobid-home vendor/grobid/
+
+      # -----------------------------------------------
+      # Cache JRE runtime by platform
+      # -----------------------------------------------
+      - name: Cache JRE runtime
+        id: jre-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
+          key: jre-${{ runner.os }}-${{ matrix.target }}-${{ env.GROBID_VERSION }}
+
+      # Build minimal JRE via jlink only if not in cache
+      - name: Build jlink image
+        if: steps.jre-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p vendor/jre/${{ matrix.os }}
           jlink \
             --add-modules java.base,java.logging,java.xml,jdk.unsupported \
             --strip-debug --no-header-files --no-man-pages --compress=2 \
-            --output runtime/${{ matrix.os }}
+            --output vendor/jre/${{ matrix.os }}
 
-      # 4️⃣ Build crate
+      # -----------------------------------------------
+      # Build as normal – your existing build.rs will
+      # pick up vendor/ automatically
+      # -----------------------------------------------
       - name: cargo build
         env:
-          JAVA_HOME: ${{ github.workspace }}/runtime/${{ matrix.os }}
+          JAVA_HOME: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
         run: cargo build --release --target ${{ matrix.target }} --features cli
 
-      # 5️⃣ Run integration test (parse sample.pdf)
+      # Run integration test
       - name: Test end‑to‑end
         env:
-          JAVA_HOME: ${{ github.workspace }}/runtime/${{ matrix.os }}
-        run: cargo test --target ${{ matrix.target }} 
+          JAVA_HOME: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
+        run: cargo test --target ${{ matrix.target }}

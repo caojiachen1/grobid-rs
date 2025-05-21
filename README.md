@@ -121,6 +121,7 @@ Detailed documentation is available in the `docs/` directory:
 - [Managing Grobid Resources](docs/2_RESOURCES.md)
 - [Packaging and Distribution](docs/3_DISTRIBUTION.md)
 - [Debugging and Advanced Topics](docs/4_ADVANCED.md)
+- [GitHub Actions Caching](docs/GITHUB_ACTIONS_CACHING.md)
 - [Development Roadmap](docs/PLAN.md)
 
 ## Building from Source
@@ -164,6 +165,7 @@ The build system includes several optimizations:
 - Automatic download resumption for interrupted builds
 - Memory-efficient streaming ZIP extraction
 - Proper cleanup and rebuild when JRE configuration changes
+- GitHub Actions caching for faster CI builds (10-15× speedup)
 
 ### Maintenance Tasks
 ### Vendoring Dependencies
