@@ -14,11 +14,9 @@ fn main() {
                     println!("\nContents:");
                     let mut has_files = false;
 
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            has_files = true;
-                            println!("  {}", entry.path().display());
-                        }
+                    for entry in entries.flatten() {
+                        has_files = true;
+                        println!("  {}", entry.path().display());
                     }
 
                     if !has_files {

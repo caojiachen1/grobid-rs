@@ -1,7 +1,7 @@
-use grobid_rs::{fulltext_to_tei_cached, init_with_config, CacheConfig, GrobidConfig, OutputType};
+use grobid_rs::{fulltext_to_tei_cached, init_with_config, CacheConfig, GrobidConfig};
 use insta::assert_snapshot;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tempfile::tempdir;
 
 fn get_test_pdf_path() -> PathBuf {
