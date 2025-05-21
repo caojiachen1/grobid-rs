@@ -90,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize Grobid
     println!("Initializing Grobid from {}", grobid_home.display());
     let config = grobid_rs::GrobidConfig::new(grobid_home);
-    grobid_rs::init_with_config(&config)?;
+    grobid_rs::init(&config)?;
 
     // Find all PDF files in the input directory
     let pdf_files: Vec<PathBuf> = fs::read_dir(input_dir)?

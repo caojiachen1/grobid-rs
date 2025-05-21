@@ -71,6 +71,14 @@ impl From<grobid_rs::GrobidError> for CliExitCode {
             grobid_rs::GrobidError::Configuration(_) => CliExitCode::ConfigError,
             grobid_rs::GrobidError::Io(_) => CliExitCode::IoError,
             grobid_rs::GrobidError::VersionMismatch { .. } => CliExitCode::VersionMismatch,
+            grobid_rs::GrobidError::Cache(_) => CliExitCode::GenericError,
+            grobid_rs::GrobidError::Conversion(_) => CliExitCode::FormatConversionError,
+            grobid_rs::GrobidError::ParseError(_) => CliExitCode::FormatConversionError,
+            grobid_rs::GrobidError::UnexpectedEof(_) => CliExitCode::FormatConversionError,
+            grobid_rs::GrobidError::XmlParseError { .. } => CliExitCode::FormatConversionError,
+            grobid_rs::GrobidError::MalformedXml { .. } => CliExitCode::FormatConversionError,
+            grobid_rs::GrobidError::SerializationError(_) => CliExitCode::FormatConversionError,
+            _ => CliExitCode::GenericError, // Catch all other error variants
         }
     }
 }
@@ -94,11 +102,26 @@ pub enum OutputFormat {
     Text,
 }
 
+/// JSON formatting options
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum JsonFormat {
+    /// Pretty-printed JSON with indentation and line breaks
+    Pretty,
+    /// Compact JSON without extra whitespace
+    Compact,
+}
+
+impl Default for JsonFormat {
+    fn default() -> Self {
+        JsonFormat::Pretty
+    }
+}
+
 /// A CLI tool to interact with Grobid for processing scholarly documents.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(
-    after_help = "OUTPUT FORMAT SUPPORT:\n  - TEI (tei): Native XML format from Grobid (all commands)\n  - JSON (json): Structured data extracted from TEI (all commands)\n  - Text (text): Plain text extraction from TEI (all commands)\n  - BibTeX (bibtex): Citation format (references command only)\n\nCACHE OPTIONS:\n  --skip-existing       Skip processing if cached results exist (default: true)\n  --force-reprocess     Force reprocessing even if cached results exist\n  --no-cache            Disable caching entirely\n  --stats               Display cache statistics after processing\n\nEXAMPLES:\n  # Process a document header and output as TEI XML\n  grobid-cli header paper.pdf\n\n  # Extract references as BibTeX\n  grobid-cli references paper.pdf\n\n  # Process full text and save as JSON to a file\n  grobid-cli fulltext paper.pdf --output-format=json -o paper.json\n\n  # Use custom Grobid base directory and more memory\n  grobid-cli --grobid-base=/path/to/grobid --max-memory=2G header paper.pdf\n\n  # Force reprocessing (ignore cache)\n  grobid-cli fulltext paper.pdf --force-reprocess\n\n  # Show cache statistics\n  grobid-cli --stats fulltext paper.pdf"
+    after_help = "OUTPUT FORMAT SUPPORT:\n  - TEI (tei): Native XML format from Grobid (all commands)\n  - JSON (json): Structured data extracted from TEI (all commands)\n  - Text (text): Plain text extraction from TEI (all commands)\n  - BibTeX (bibtex): Citation format (references command only)\n\nJSON FORMAT OPTIONS:\n  --json-format=pretty  Pretty-print JSON with indentation (default)\n  --json-format=compact  Compact JSON without whitespace\n\nCACHE OPTIONS:\n  --skip-existing       Skip processing if cached results exist (default: true)\n  --force-reprocess     Force reprocessing even if cached results exist\n  --no-cache            Disable caching entirely\n  --stats               Display cache statistics after processing\n\nEXAMPLES:\n  # Process a document header and output as TEI XML\n  grobid-cli header paper.pdf\n\n  # Extract references as BibTeX\n  grobid-cli references paper.pdf\n\n  # Process full text and save as JSON to a file\n  grobid-cli fulltext paper.pdf --output-format=json -o paper.json\n\n  # Process header with compact JSON output\n  grobid-cli header paper.pdf --output-format=json --json-format=compact\n\n  # Use custom Grobid base directory and more memory\n  grobid-cli --grobid-base=/path/to/grobid --max-memory=2G header paper.pdf\n\n  # Force reprocessing (ignore cache)\n  grobid-cli fulltext paper.pdf --force-reprocess\n\n  # Show cache statistics\n  grobid-cli --stats fulltext paper.pdf"
 )]
 pub struct Args {
     /// Path to the Grobid base directory (containing grobid/ and runtime/).
@@ -124,6 +147,10 @@ pub struct Args {
     /// Add JVM option
     #[clap(short = 'J', long = "jvm-option")]
     pub jvm_options: Vec<String>,
+
+    /// JSON output format (pretty or compact)
+    #[clap(long, value_enum, default_value_t = JsonFormat::Pretty)]
+    pub json_format: JsonFormat,
 
     /// Skip processing if cached results exist (default: true)
     #[clap(long, default_value_t = true)]

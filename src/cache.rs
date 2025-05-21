@@ -14,6 +14,9 @@ use tracing::{debug, info, trace, warn};
 /// Grobid version used as part of the cache key
 use crate::GROBID_VERSION;
 
+/// Environment variable name for overriding the cache directory
+pub const CACHE_DIR_ENV: &str = "GROBID_RS_CACHE_DIR";
+
 /// Global cache statistics for the current process
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CacheStats {
@@ -103,7 +106,7 @@ fn hash_pdf(pdf_path: &Path) -> Result<String, GrobidError> {
     trace!("Hashing PDF file: {}", pdf_path.display());
 
     // Read the entire file into a buffer
-    let file_content = fs::read(pdf_path).map_err(|e| GrobidError::Io(e))?;
+    let file_content = fs::read(pdf_path).map_err(GrobidError::Io)?;
 
     // Hash the file content
     hash_content(&file_content)
@@ -131,7 +134,7 @@ fn hash_content(content: &[u8]) -> Result<String, GrobidError> {
 /// Get the base cache directory for grobid-rs
 pub fn get_cache_dir() -> Result<PathBuf, GrobidError> {
     // Check for environment variable override (useful for testing)
-    if let Ok(env_cache_dir) = std::env::var("GROBID_RS_CACHE_DIR") {
+    if let Ok(env_cache_dir) = std::env::var(CACHE_DIR_ENV) {
         let cache_dir = PathBuf::from(env_cache_dir);
 
         // Create the cache directory if it doesn't exist
@@ -140,7 +143,7 @@ pub fn get_cache_dir() -> Result<PathBuf, GrobidError> {
                 "Creating cache directory from env var: {}",
                 cache_dir.display()
             );
-            fs::create_dir_all(&cache_dir).map_err(|e| GrobidError::Io(e))?;
+            fs::create_dir_all(&cache_dir).map_err(GrobidError::Io)?;
         }
 
         return Ok(cache_dir);
@@ -156,7 +159,7 @@ pub fn get_cache_dir() -> Result<PathBuf, GrobidError> {
     // Create the cache directory if it doesn't exist
     if !cache_dir.exists() {
         trace!("Creating cache directory: {}", cache_dir.display());
-        fs::create_dir_all(&cache_dir).map_err(|e| GrobidError::Io(e))?;
+        fs::create_dir_all(&cache_dir).map_err(GrobidError::Io)?;
     }
 
     Ok(cache_dir)
@@ -205,17 +208,17 @@ pub fn read_cache(pdf_path: &Path, output_type: OutputType) -> Result<String, Gr
     debug!("Reading from cache: {}", cache_path.display());
 
     // Open the file
-    let file = fs::File::open(&cache_path).map_err(|e| GrobidError::Io(e))?;
+    let file = fs::File::open(&cache_path).map_err(GrobidError::Io)?;
 
     // Get file size for logging
     let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
     // Memory-map the file for zero-copy reading
     let mmap = unsafe { Mmap::map(&file) }.map_err(|e| {
-        GrobidError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Failed to memory-map cache file: {}", e),
-        ))
+        GrobidError::Io(std::io::Error::other(format!(
+            "Failed to memory-map cache file: {}",
+            e
+        )))
     })?;
 
     // Create a string from the memory-mapped region, avoiding a copy
@@ -287,18 +290,18 @@ pub fn write_cache(
         GrobidError::InvalidInput("Failed to determine cache file parent directory".to_string())
     })?;
 
-    let mut temp_file = NamedTempFile::new_in(dir)
-        .map_err(|e| GrobidError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    let mut temp_file =
+        NamedTempFile::new_in(dir).map_err(|e| GrobidError::Io(std::io::Error::other(e)))?;
 
     // Acquire an exclusive lock on the temporary file to avoid race conditions in parallel processing
     {
         let file = temp_file.as_file();
-        file.lock_exclusive().map_err(|e| GrobidError::Io(e))?;
+        file.lock_exclusive().map_err(GrobidError::Io)?;
 
         // Write the content to the temporary file
         temp_file
             .write_all(content.as_bytes())
-            .map_err(|e| GrobidError::Io(e))?;
+            .map_err(GrobidError::Io)?;
 
         // Keep the lock until the end of this scope
     }
@@ -306,7 +309,7 @@ pub fn write_cache(
     // Persist the temporary file by renaming it to the target path (atomic operation)
     temp_file
         .persist(&cache_path)
-        .map_err(|e| GrobidError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| GrobidError::Io(std::io::Error::other(e)))?;
 
     // Update cache statistics
     CACHE_BYTES_WRITTEN.fetch_add(content.len(), Ordering::Relaxed);

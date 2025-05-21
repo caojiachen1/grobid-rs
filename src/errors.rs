@@ -44,11 +44,59 @@ pub enum GrobidError {
     /// Cache-related errors
     #[error("Cache error: {0}")]
     Cache(String),
+
+    /// XML parsing errors (general)
+    #[error("Parse error: {0}")]
+    ParseError(String),
+
+    /// Unexpected end of file during XML parsing
+    #[error("Unexpected end of file while parsing {0}")]
+    UnexpectedEof(String),
+
+    /// XML parsing error with context
+    #[error("XML parsing error in {context}: {message}")]
+    XmlParseError { message: String, context: String },
+
+    /// Malformed XML error
+    #[error("Malformed XML: {message}. Expected {expected}, found {found}")]
+    MalformedXml {
+        message: String,
+        expected: String,
+        found: String,
+    },
+
+    /// JSON serialization errors
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    /// JSON deserialization errors
+    #[error("Deserialization error: {0}")]
+    DeserializationError(String),
+
+    /// Generic conversion errors
+    #[error("Conversion error: {0}")]
+    Conversion(String),
 }
 
 impl From<Box<dyn std::error::Error>> for GrobidError {
     fn from(err: Box<dyn std::error::Error>) -> Self {
         GrobidError::InvalidInput(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for GrobidError {
+    fn from(err: serde_json::Error) -> Self {
+        if err.is_syntax() || err.is_data() {
+            GrobidError::DeserializationError(err.to_string())
+        } else {
+            GrobidError::SerializationError(err.to_string())
+        }
+    }
+}
+
+impl From<quick_xml::Error> for GrobidError {
+    fn from(err: quick_xml::Error) -> Self {
+        GrobidError::ParseError(err.to_string())
     }
 }
 
