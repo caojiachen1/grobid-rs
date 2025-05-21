@@ -3,9 +3,7 @@ on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
-  GROBID_VERSION: 0.8.2               # keep one source of truth
-  GROBID_ZIP: grobid-${{ env.GROBID_VERSION }}-onejar.zip
-  GROBID_CACHE_DIR: ${{ github.workspace }}/.grobid-cache
+  GROBID_VERSION: '0.8.2'
 
 jobs:
   build:
@@ -19,6 +17,9 @@ jobs:
           - os: windows-latest # win‑x64
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    env:
+      GROBID_ZIP: grobid-0.8.2-onejar.zip
+      GROBID_CACHE_DIR: ${{ github.workspace }}/.grobid-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -36,9 +37,9 @@ jobs:
         with:
           # anything placed here will be cached
           path: ${{ env.GROBID_CACHE_DIR }}
-          key: grobid-${{ env.GROBID_VERSION }}-bundle
+          key: grobid-0.8.2-bundle
           restore-keys: |
-            grobid-${{ env.GROBID_VERSION }}
+            grobid-0.8.2
 
       # -----------------------------------------------
       # Fetch only if the cache miss occurred
@@ -48,7 +49,7 @@ jobs:
         run: |
           mkdir -p "${{ env.GROBID_CACHE_DIR }}"
           curl -fsSL -o "${{ env.GROBID_CACHE_DIR }}/${{ env.GROBID_ZIP }}" \
-            "https://github.com/kermitt2/grobid/releases/download/v${{ env.GROBID_VERSION }}/${{ env.GROBID_ZIP }}"
+            "https://github.com/kermitt2/grobid/releases/download/v0.8.2/grobid-0.8.2-onejar.zip"
       
       # -----------------------------------------------
       # Extract or decompress into vendor directory
@@ -60,7 +61,7 @@ jobs:
         id: check-zst
         shell: bash
         run: |
-          if [ -f "vendor/grobid/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar.zst" ] && [ -d "vendor/grobid/grobid-home.zst" ]; then
+          if [ -f "vendor/grobid/grobid-core-0.8.2-onejar.jar.zst" ] && [ -d "vendor/grobid/grobid-home.zst" ]; then
             echo "compressed_assets=true" >> $GITHUB_OUTPUT
           else
             echo "compressed_assets=false" >> $GITHUB_OUTPUT
@@ -72,7 +73,7 @@ jobs:
         run: |
           # The exact decompression commands will depend on your build.rs implementation
           # This is a placeholder showing the concept
-          cp vendor/grobid/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar.zst ${{ env.GROBID_CACHE_DIR }}/
+          cp vendor/grobid/grobid-core-0.8.2-onejar.jar.zst ${{ env.GROBID_CACHE_DIR }}/
           cp -r vendor/grobid/grobid-home.zst ${{ env.GROBID_CACHE_DIR }}/
           
           # Your build.rs will handle the decompression
@@ -82,8 +83,8 @@ jobs:
         if: steps.check-zst.outputs.compressed_assets == 'false'
         run: |
           unzip -q "${{ env.GROBID_CACHE_DIR }}/${{ env.GROBID_ZIP }}" -d tmp
-          mv tmp/grobid-${{ env.GROBID_VERSION }}/grobid-core-${{ env.GROBID_VERSION }}-onejar.jar vendor/grobid/
-          mv tmp/grobid-${{ env.GROBID_VERSION }}/grobid-home vendor/grobid/
+          mv tmp/grobid-0.8.2/grobid-core-0.8.2-onejar.jar vendor/grobid/
+          mv tmp/grobid-0.8.2/grobid-home vendor/grobid/
 
       # -----------------------------------------------
       # Cache JRE runtime by platform
@@ -93,7 +94,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
-          key: jre-${{ runner.os }}-${{ matrix.target }}-${{ env.GROBID_VERSION }}
+          key: jre-${{ runner.os }}-${{ matrix.target }}-0.8.2
 
       # Build minimal JRE via jlink only if not in cache
       - name: Build jlink image
