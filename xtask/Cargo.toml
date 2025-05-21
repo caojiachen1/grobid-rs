@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+description = "Development-time utilities for grobid-rs"
+publish = false
+
+[[bin]]
+name = "vendor"
+path = "src/bin/vendor.rs"
+
+[dependencies]
+chrono = "0.4"

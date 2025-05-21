@@ -1,3 +1,43 @@
-target/
+# Rust build artifacts
+/target/
+
+# Environment variables
 .env
-/target/*/build/*/out/
+
+# Logs
+/logs/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+*.tmp
+*~
+
+# IDE-specific files
+.idea/
+.vscode/
+
+# Large ZIP at project root
+/0.8.2.zip
+*.zip
+*.tar.gz
+*.tar.xz
+
+# Maven local repository
+.m2/
+.extraction_success
+.build_success
+.jre_successful
+
+# Ignore everything in vendor directory by default
+/vendor/*
+
+# But specifically allow these vendor directories and their contents
+!/vendor/
+!/vendor/grobid/
+!/vendor/grobid/**
+!/vendor/jre/
+!/vendor/jre/**
+
+# Never commit staged build output anywhere else
+**/grobid_assets/

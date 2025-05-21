@@ -1,0 +1,10 @@
+[workspace]
+members = ["xtask"]
+exclude = []
+
+[workspace.package]
+authors = ["Grobid-RS Contributors"]
+edition = "2021"
+rust-version = "1.65"
+repository = "https://github.com/username/grobid-rs"
+license = "MIT OR Apache-2.0"
