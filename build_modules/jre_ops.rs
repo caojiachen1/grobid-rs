@@ -1,4 +1,5 @@
 use crate::build_modules::common::*;
+use crate::build_modules::fingerprint;
 use crate::build_modules::utils::run_command;
 
 fn build_jlink_runtime(
@@ -84,8 +85,22 @@ pub fn ensure_jlink_runtime(
 ) -> Result<PathBuf> {
     let jlink_runtime_dir = target_grobid_deployment_dir.join(JLINK_RUNTIME_SUBDIR_NAME);
     let success_marker = jlink_runtime_dir.join(JRE_SUCCESS_MARKER_FILE);
+    let fp_path = jlink_runtime_dir.join(".fingerprint.json");
 
-    if !success_marker.exists() {
+    // Use a dummy path for gradlew since we don't need it for JRE fingerprinting
+    let current_fp = fingerprint::Fingerprint::current(java_home_path, &PathBuf::new())?;
+    
+    let up_to_date = fp_path.is_file()
+        && success_marker.exists()
+        && match File::open(&fp_path) {
+            Ok(file) => match serde_json::from_reader::<_, fingerprint::Fingerprint>(file) {
+                Ok(stored_fp) => stored_fp == current_fp,
+                Err(_) => false,
+            },
+            Err(_) => false,
+        };
+
+    if !up_to_date {
         print_cargo_warning(&format!(
             "jlink JRE not found or build incomplete at {}. Will build JRE.",
             jlink_runtime_dir.display()
@@ -101,15 +116,21 @@ pub fn ensure_jlink_runtime(
                 success_marker.display()
             )
         })?;
+        
+        // Save the fingerprint
+        let file = File::create(&fp_path).with_context(|| 
+            format!("Failed to create fingerprint file at {}", fp_path.display())
+        )?;
+        serde_json::to_writer_pretty(file, &current_fp).with_context(||
+            format!("Failed to write fingerprint data to {}", fp_path.display())
+        )?;
+        
         print_cargo_warning(&format!(
             "jlink JRE successfully built at: {}",
             jlink_runtime_dir.display()
         ));
     } else {
-        print_cargo_warning(&format!(
-            "Found existing successfully built jlink JRE at: {}",
-            jlink_runtime_dir.display()
-        ));
+        print_cargo_warning("JRE runtime unchanged – skipping jlink build");
     }
     Ok(jlink_runtime_dir)
 }

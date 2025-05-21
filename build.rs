@@ -378,5 +378,11 @@ fn main() -> Result<()> {
     // Configure JNI linkage using the paths from the deployment and JRE directories
     setup_jni_linkage(&java_home, &jlink_dir, &deployment_dir)?;
 
+    // The Grobid artefacts themselves live under `target/`; Cargo should **not**
+    // rebuild when they change.  Tell it explicitly:
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed={}", FORCE_GROBID_REBUILD_ENV_VAR);
+    // Everything else (GROBID_VERSION, fingerprints…) is handled inside build.rs.
+
     Ok(())
 }

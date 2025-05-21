@@ -1,6 +1,7 @@
 // build_modules/mod.rs
 pub mod build_ops;
 pub mod common;
+pub mod fingerprint;
 pub mod java_env;
 pub mod jni_config;
 pub mod jre_ops;

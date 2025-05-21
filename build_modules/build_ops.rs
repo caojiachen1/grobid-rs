@@ -1,4 +1,5 @@
 use crate::build_modules::common::*;
+use crate::build_modules::fingerprint;
 use crate::build_modules::utils::run_command;
 
 fn run_gradle_build(grobid_source_root: &Path, java_home: &Path) -> Result<()> {
@@ -150,8 +151,22 @@ pub fn build_and_stage_grobid(
     java_home_path: &Path,
 ) -> Result<()> {
     let success_marker = target_grobid_deployment_dir.join(BUILD_SUCCESS_MARKER_FILE);
+    let fp_path = target_grobid_deployment_dir.join(".fingerprint.json");
 
-    if !success_marker.exists() {
+    let gradlew = grobid_source_root.join(if cfg!(windows) {"gradlew.bat"} else {"gradlew"});
+    let current_fp = fingerprint::Fingerprint::current(java_home_path, &gradlew)?;
+    
+    let up_to_date = fp_path.is_file()
+        && success_marker.exists()
+        && match File::open(&fp_path) {
+            Ok(file) => match serde_json::from_reader::<_, fingerprint::Fingerprint>(file) {
+                Ok(stored_fp) => stored_fp == current_fp,
+                Err(_) => false,
+            },
+            Err(_) => false,
+        };
+
+    if !up_to_date {
         print_cargo_warning(&format!(
             "Grobid artifacts not found or build incomplete at {}. Will build and stage.",
             target_grobid_deployment_dir.display()
@@ -175,15 +190,21 @@ pub fn build_and_stage_grobid(
                 success_marker.display()
             )
         })?;
+        
+        // Save the fingerprint
+        let file = File::create(&fp_path).with_context(|| 
+            format!("Failed to create fingerprint file at {}", fp_path.display())
+        )?;
+        serde_json::to_writer_pretty(file, &current_fp).with_context(||
+            format!("Failed to write fingerprint data to {}", fp_path.display())
+        )?;
+        
         print_cargo_warning(&format!(
             "Grobid successfully built and artifacts staged at: {}",
             target_grobid_deployment_dir.display()
         ));
     } else {
-        print_cargo_warning(&format!(
-            "Found existing successfully built Grobid artifacts at: {}",
-            target_grobid_deployment_dir.display()
-        ));
+        print_cargo_warning("Grobid artefacts unchanged – skipping Gradle build");
     }
     Ok(())
 }
