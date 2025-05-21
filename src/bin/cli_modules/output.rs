@@ -1,9 +1,9 @@
-use std::path::PathBuf;
-use std::fs;
-use indicatif::{ProgressBar, ProgressStyle};
-use tracing::info;
-use std::io::IsTerminal;
 use grobid_rs::get_cache_stats;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::fs;
+use std::io::IsTerminal;
+use std::path::PathBuf;
+use tracing::info;
 
 /// Write output to file or stdout
 pub fn write_output(output: &str, output_file: &Option<PathBuf>) -> Result<(), std::io::Error> {

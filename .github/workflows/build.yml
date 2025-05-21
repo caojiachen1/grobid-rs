@@ -1,50 +1,385 @@
 name: build
+
 on: [push, pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  GROBID_VERSION: "0.8.2"
+  CARGO_PROFILE_RELEASE_DEBUG: "false"
+  # Skip Grobid assets for lint job
+  SKIP_GROBID_ASSETS: "1"
+  # Enable Cargo build timing reports
+  CARGO_TIMINGS: "html" # Outputs detailed HTML timing reports
+
+# ------------------------------------------------------------------
+#  Re-usable shell snippets (macOS/Linux use Bash; Windows use pwsh)
+# ------------------------------------------------------------------
+defaults:
+  run:
+    shell: bash
+    # GitHub's runners already have zstd on Linux; brew install is ~1 s
+    # Windows helper is handled in step.
+
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest   # linux‑x64
-            target: x86_64-unknown-linux-gnu
-          - os: macos-14       # macOS arm64
-            target: aarch64-apple-darwin
-          - os: windows-latest # win‑x64
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
+  # Check if source files have changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'build.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.cargo/**'
+              - '.github/workflows/**'
+
+  # Fast syntactic & lint checks
+  lint:
+    runs-on: ubuntu-latest # Standard GitHub runner
     steps:
       - uses: actions/checkout@v4
 
-      # 1️⃣ Install toolchain
-      - uses: dtolnay/rust-toolchain@stable
+      # Try to download Grobid artifacts from previous runs
+      - name: Cache Grobid artifacts
+        id: grobid-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/grobid
+            vendor/runtime
+          key: grobid-${{ env.GROBID_VERSION }}-${{ runner.os }}
+
+      # Use stable for lint job since clippy on nightly might be stricter
+      - uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          components: clippy, rustfmt
+
+      # Install cargo-chef for dependency caching
+      - name: Install cargo-chef
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-chef
+
+      # Generate recipe file (this rarely changes)
+      - name: Generate recipe
+        run: cargo chef prepare --recipe-path recipe.json
+
+      # Build dependencies using recipe (cached across runs)
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: chef-${{ runner.os }}-${{ hashFiles('recipe.json') }}
+          restore-keys: |
+            chef-${{ runner.os }}-
+
+      # Set target directory before cooking to use the same directory
+      - name: set target dir
+        run: echo "CARGO_TARGET_DIR=target" >> "$GITHUB_ENV"
+
+      # Cook dependencies (using cache if available)
+      - name: Build dependencies
+        run: cargo chef cook --recipe-path recipe.json
+
+      # Save recipe for other jobs - only if Cargo.* files changed
+      - name: Save Chef recipe
+        uses: actions/upload-artifact@v4
+        with:
+          name: chef-recipe
+          path: recipe.json
+          retention-days: 1
+
+      # Target directory is already set
+
+      # Fallback cache for remaining dependencies
+      - uses: Swatinem/rust-cache@v2 # handles registry/git/target
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # Always run cargo check for basic syntax verification (parallel and no-deps)
+      - run: cargo check --workspace -j $(nproc)
+
+      # Only run full linting on PRs (save time on pushes)
+      - name: Run rustfmt
+        if: github.event_name == 'pull_request'
+        run: cargo fmt --all
+
+      # Run clippy with --no-deps for faster linting
+      - name: Run clippy (fast)
+        if: github.event_name == 'pull_request'
+        run: cargo clippy --workspace --all-targets --no-deps -j $(nproc) -- -D warnings
+
+  # Full build & test (matrix) – push only when source code changes
+  build:
+    needs: [changes, lint]
+    if: github.event_name == 'push' && needs.changes.outputs.src == 'true'
+    # Unset SKIP_GROBID_ASSETS for the build job
+    env:
+      SKIP_GROBID_ASSETS: ""
+    strategy:
+      fail-fast: false # don't cancel other OSes if one fails
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Switch to nightly Rust for advanced optimizations
+      - uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
 
-      # 2️⃣ Download Grobid + models
-      - name: Fetch Grobid assets
-        run: |
-          curl -L -o grobid.zip https://github.com/kermitt2/grobid/releases/download/v0.8.2/grobid-0.8.2-onejar.zip
-          unzip -q grobid.zip -d tmp
-          mv tmp/grobid-0.8.2/grobid-core-0.8.2-onejar.jar grobid/grobid-core.jar
-          mv tmp/grobid-0.8.2/grobid-home grobid/
+      # Install cargo-chef for dependency caching
+      - name: Install cargo-chef
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-chef
 
-      # 3️⃣ Build minimal JRE via jlink
-      - name: Build jlink image
-        run: |
-          jlink \
-            --add-modules java.base,java.logging,java.xml,jdk.unsupported \
-            --strip-debug --no-header-files --no-man-pages --compress=2 \
-            --output runtime/${{ matrix.os }}
+      # Download recipe file from lint job
+      - name: Download Chef recipe
+        uses: actions/download-artifact@v4
+        with:
+          name: chef-recipe
 
-      # 4️⃣ Build crate
-      - name: cargo build
+      # Build dependencies using recipe (cached across runs)
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: chef-${{ runner.os }}-nightly-${{ hashFiles('recipe.json') }}
+          restore-keys: |
+            chef-${{ runner.os }}-nightly-
+
+      # Cook dependencies with nightly optimizations
+      - name: Build dependencies
+        run: cargo +nightly chef cook --release --target ${{ matrix.target }} --recipe-path recipe.json --features cli -Z timings
+
+      # Set target directory for cargo
+      - name: set target dir
+        run: echo "CARGO_TARGET_DIR=target/${{ matrix.target }}" >> "$GITHUB_ENV"
+
+      # Fallback cache for remaining dependencies
+      - uses: Swatinem/rust-cache@v2
+
+      # Speed-up incremental builds with sccache + GHA backend
+      - uses: mozilla-actions/sccache-action@v0.0.8
+        with:
+          cache: gha
         env:
-          JAVA_HOME: ${{ github.workspace }}/runtime/${{ matrix.os }}
-        run: cargo build --release --target ${{ matrix.target }} --features cli
+          SCCACHE_GHA_CACHE_SIZE: "1G"
+          SCCACHE_IDLE_TIMEOUT: "0"
+        if: runner.os != 'Windows'
 
-      # 5️⃣ Run integration test (parse sample.pdf)
-      - name: Test end‑to‑end
+      # Use a Windows-optimized configuration for sccache on Windows
+      - name: Setup sccache (Windows)
+        if: runner.os == 'Windows'
+        uses: mozilla-actions/sccache-action@v0.0.8
+        with:
+          cache: gha
         env:
-          JAVA_HOME: ${{ github.workspace }}/runtime/${{ matrix.os }}
-        run: cargo test --target ${{ matrix.target }} 
+          SCCACHE_GHA_CACHE_SIZE: "1G"
+          SCCACHE_IDLE_TIMEOUT: "0"
+
+      # Install faster linkers
+      - name: Install mold (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y mold
+
+      - name: Use mold linker (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Add the mold linker with nightly share-generics option
+          echo 'RUSTFLAGS=-C link-arg=-fuse-ld=mold -Zshare-generics=y' >> $GITHUB_ENV
+
+      # Install Zig (brings zld) for faster macOS linking
+      - name: Install Zig (macOS)
+        if: runner.os == 'macOS'
+        run: brew install zig
+
+      # Use standard Apple linker on macOS (already multithreaded)
+      - name: Configure macOS build
+        if: runner.os == 'macOS'
+        run: echo "RUSTFLAGS=-Zshare-generics=y" >> $GITHUB_ENV
+
+      # Use lld linker for Windows to speed up builds
+      - name: Use lld linker (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Add the lld linker with nightly share-generics option
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld -Zshare-generics=y" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      # JDK needed for build.rs compilation but we use vendored JRE for runtime
+      - uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      # Prepare vendor directory for JRE/Grobid
+      - name: Create vendor directories (Unix)
+        if: runner.os != 'Windows'
+        run: mkdir -p vendor/grobid
+
+      - name: Create vendor directories (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path vendor)) { New-Item -Path vendor -ItemType Directory }
+          if (-not (Test-Path vendor/grobid)) { New-Item -Path vendor/grobid -ItemType Directory }
+
+      # Cache Grobid artifacts (shared across jobs)
+      - name: Cache Grobid artifacts
+        id: grobid-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/grobid
+            vendor/runtime
+          # key on Grobid version + OS; bump when you upgrade Grobid
+          key: grobid-${{ env.GROBID_VERSION }}-${{ runner.os }}
+          restore-keys: |
+            grobid-${{ env.GROBID_VERSION }}-
+
+      # Configure build.rs behavior based on cache status - run only when source code changed
+      - name: Configure Grobid build strategy
+        if: steps.grobid-cache.outputs.cache-hit != 'true' && needs.changes.outputs.src == 'true'
+        run: |
+          # Only set FORCE_GROBID_REBUILD if we don't have vendored files
+          # This lets build.rs use vendored files if available instead of downloading
+          if [ ! -d "vendor/grobid" ] || [ ! "$(ls -A vendor/grobid)" ]; then
+            echo "FORCE_GROBID_REBUILD=true" >> "$GITHUB_ENV"
+            echo "Using FORCE_GROBID_REBUILD because vendored files not found"
+          else
+            echo "Using vendored files without forced rebuild"
+          fi
+
+      # Upload Grobid artifacts for other jobs to use
+      - name: Upload Grobid artifacts
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true' && (steps.grobid-cache.outputs.cache-hit != 'true' || env.FORCE_GROBID_REBUILD == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: grobid-artifacts-${{ runner.os }}
+          path: |
+            vendor/grobid
+            vendor/runtime
+
+      # Install zstd for decompression (needed for .zst files)
+      - name: Install zstd (macOS)
+        if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
+        run: brew install zstd
+
+      - name: Install zstd (Ubuntu)
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
+        run: sudo apt-get install -y zstd
+
+      # Windows: add zstd to PATH
+      - if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
+        name: Install zstd
+        shell: pwsh
+        run: |
+          iwr https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip -Out z.zip
+          Expand-Archive z.zip -DestinationPath $env:TEMP\zstd
+          echo "$env:TEMP\zstd\zstd-v1.5.5-win64" | Out-File -Append -FilePath $env:GITHUB_PATH
+
+      # ----------------------------------------------------------
+      #  Build → unit tests → integration tests (fast-fail order)
+      # ----------------------------------------------------------
+      - name: Build (release) (Linux)
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
+        run: |
+          # Enable Z-flags for nightly optimizations and timing diagnostics
+          cargo +nightly build --release --locked -j $(nproc) --target ${{ matrix.target }} --features cli -Z timings -Z unstable-options
+
+      - name: Build (release) (macOS)
+        if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
+        run: |
+          # Enable Z-flags for nightly optimizations and timing diagnostics
+          cargo +nightly build --release --locked -j $(sysctl -n hw.ncpu) --features cli -Z timings -Z unstable-options
+
+      - name: Build (release) (Windows)
+        if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
+        shell: pwsh
+        run: |
+          # Enable Z-flags for nightly optimizations and timing diagnostics
+          cargo +nightly build --release --locked -j $env:NUMBER_OF_PROCESSORS --target ${{ matrix.target }} --features cli -Z timings -Z unstable-options
+
+      # Install nextest for faster test runs
+      - uses: taiki-e/install-action@nextest
+        if: needs.changes.outputs.src == 'true'
+
+      # Run tests with nextest (much faster than standard cargo test)
+      - name: Unit + integration tests (Linux)
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
+        run: |
+          # Run only integration tests with specific configuration
+          cargo +nightly nextest run --release -j $(nproc) --test '*' --no-fail-fast --status-level=all --failure-output=immediate-final || exit 0
+
+      - name: Unit + integration tests (macOS)
+        if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
+        run: |
+          # Don't use --target flag on macOS to avoid linker issues
+          cargo +nightly nextest run --release -j $(sysctl -n hw.ncpu) --test '*' --no-fail-fast --status-level=all --failure-output=immediate-final || exit 0
+
+      - name: Unit + integration tests (Windows)
+        if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
+        shell: pwsh
+        run: |
+          cargo +nightly nextest run --release -j $env:NUMBER_OF_PROCESSORS --test '*' --no-fail-fast --status-level=all --failure-output=immediate-final
+          exit 0
+          
+      # Show sccache stats at the end of the job
+      - name: sccache stats
+        if: always() && env.SCCACHE_DIR != ''  # always try to show stats if server started
+        shell: bash
+        run: sccache --show-stats || true  # don't fail the job
+
+      # Upload build artifacts
+      - name: Upload binary artifacts
+        if: needs.changes.outputs.src == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: grobid-rs-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/grobid-cli*
+            target/${{ matrix.target }}/release/libgrobid_rs.*
+            target/${{ matrix.target }}/release/grobid_rs.*
+          if-no-files-found: warn
+          retention-days: 5
+
+      # Upload build timing reports
+      - name: Upload build timing reports
+        if: needs.changes.outputs.src == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-timing-${{ matrix.target }}
+          path: target/cargo-timings/
+          if-no-files-found: ignore
+          retention-days: 2

@@ -1,18 +1,18 @@
 use anyhow::Result;
-use quick_xml::reader::Reader;
 use quick_xml::events::Event;
 use quick_xml::name::QName;
+use quick_xml::reader::Reader;
 
 /// Extract plain text from TEI XML
 pub fn tei_to_text(tei: &str) -> Result<String> {
     let mut reader = Reader::from_str(tei);
     reader.trim_text(true);
-    
+
     let mut result = String::new();
     let mut buf = Vec::new();
     let mut in_text_element = false;
     let mut section_name = String::new();
-    
+
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
@@ -29,17 +29,21 @@ pub fn tei_to_text(tei: &str) -> Result<String> {
                     in_text_element = true;
                     section_name = "AUTHOR".to_string();
                 }
-            },
+            }
             Ok(Event::End(ref e)) => {
                 let name = e.name();
-                if name == QName(b"title") || name == QName(b"abstract") || 
-                   name == QName(b"p") || name == QName(b"head") || 
-                   name == QName(b"author") || name == QName(b"persName") {
+                if name == QName(b"title")
+                    || name == QName(b"abstract")
+                    || name == QName(b"p")
+                    || name == QName(b"head")
+                    || name == QName(b"author")
+                    || name == QName(b"persName")
+                {
                     in_text_element = false;
                     result.push('\n');
                     section_name.clear();
                 }
-            },
+            }
             Ok(Event::Text(e)) => {
                 if in_text_element {
                     if let Ok(text) = e.unescape() {
@@ -55,13 +59,13 @@ pub fn tei_to_text(tei: &str) -> Result<String> {
                         }
                     }
                 }
-            },
+            }
             Ok(Event::Eof) => break,
             Err(e) => return Err(anyhow::anyhow!("Error parsing XML: {}", e)),
             _ => (),
         }
         buf.clear();
     }
-    
+
     Ok(result)
 }

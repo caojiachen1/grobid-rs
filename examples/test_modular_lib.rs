@@ -1,13 +1,14 @@
-//! Basic Extraction Example
+//! Test for modular library implementation
 //!
-//! This example demonstrates the basic usage of grobid-rs to extract
-//! information from PDF documents.
+//! This example demonstrates the use of the refactored grobid-rs library.
+//! It shows how to initialize Grobid and process a PDF file using the
+//! three main functions.
 
 use std::env;
 use std::path::Path;
 use std::process;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), grobid_rs::GrobidError> {
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
@@ -32,16 +33,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         process::exit(1);
     }
 
-    // Initialize Grobid with default configuration
+    // Initialize Grobid with configuration
     println!("Initializing Grobid from: {}", grobid_home.display());
-    let config = grobid_rs::GrobidConfig::new(grobid_home);
+    let config = grobid_rs::GrobidConfig::builder()
+        .base_path(grobid_home)
+        .max_memory("1G")
+        .build();
+
     grobid_rs::init_with_config(&config)?;
 
     // Extract header information (title, authors, abstract, etc.)
     println!("\n--- Processing Header ---");
     match grobid_rs::process_header(pdf_path) {
         Ok(header_xml) => {
-            println!("Successfully extracted header information:");
+            println!("Successfully extracted header information");
             println!("{}", truncate_output(&header_xml, 400));
         }
         Err(e) => {
@@ -53,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Processing Full Text ---");
     match grobid_rs::fulltext_to_tei(pdf_path) {
         Ok(fulltext_xml) => {
-            println!("Successfully extracted full text:");
+            println!("Successfully extracted full text");
             println!("{}", truncate_output(&fulltext_xml, 400));
         }
         Err(e) => {
@@ -65,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Processing References ---");
     match grobid_rs::process_references(pdf_path) {
         Ok(references_xml) => {
-            println!("Successfully extracted references:");
+            println!("Successfully extracted references");
             println!("{}", truncate_output(&references_xml, 400));
         }
         Err(e) => {

@@ -13,8 +13,8 @@ pub use anyhow::{bail, Context, Result};
 pub use fs_extra::dir::{copy as copy_dir_contents, CopyOptions as DirCopyOptions};
 pub use fs_extra::error::Error as FsExtraError;
 pub use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-pub use reqwest::{blocking::Client, header, StatusCode};
 pub use rayon::prelude::*;
+pub use reqwest::{blocking::Client, header, StatusCode};
 pub use sha2::{Digest, Sha256};
 pub use zip::ZipArchive;
 
@@ -23,7 +23,8 @@ pub const GROBID_VERSION: &str = "0.8.2";
 pub const GROBID_RELEASE_TAG: &str = "0.8.2"; // Used for constructing onejar name
 pub const GROBID_DOWNLOAD_URL_PREFIX: &str =
     "https://github.com/kermitt2/grobid/archive/refs/tags/";
-pub const GROBID_ZIP_SHA256: &str = "19397444474e7456fc6fa416fb4aa22ba88f34979e7e9cd8f97aa81a28f2d2f2";
+pub const GROBID_ZIP_SHA256: &str =
+    "19397444474e7456fc6fa416fb4aa22ba88f34979e7e9cd8f97aa81a28f2d2f2";
 
 // ----------- Environment Variables -----------
 pub const GROBID_RS_ASSETS_PATH_ENV_VAR: &str = "GROBID_RS_ASSETS_PATH";
@@ -59,6 +60,7 @@ pub const JAKARTA_JLINK_MODULES: &str = "java.base,java.logging,java.xml,jdk.uns
 pub const CARGO_RERUN_IF_CHANGED_ENV_VAR: &str = "CARGO_RERUN_IF_CHANGED";
 pub const CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR: &str = "CARGO_RERUN_IF_ENV_CHANGED";
 pub const CARGO_WARNING_PREFIX: &str = "cargo:warning=";
+pub const CARGO_INFO_PREFIX: &str = "cargo:info=";
 pub const CARGO_LINK_SEARCH_NATIVE_PREFIX: &str = "cargo:rustc-link-search=native=";
 pub const CARGO_LINK_LIB_STATIC_PREFIX: &str = "cargo:rustc-link-lib=static=";
 pub const CARGO_LINK_LIB_DYLIB_PREFIX: &str = "cargo:rustc-link-lib=dylib=";
@@ -66,5 +68,13 @@ pub const CARGO_LINK_LIB_DYLIB_PREFIX: &str = "cargo:rustc-link-lib=dylib=";
 // ----------- Utility Functions (moved here for now, might go to utils.rs later) -----------
 
 pub fn print_cargo_warning(message: &str) {
-    println!("{}{}", CARGO_WARNING_PREFIX, message);
-} 
+    println!("{CARGO_WARNING_PREFIX}{message}");
+}
+
+/// Print an info message during the build process
+///
+/// This function prints a message prefixed with "cargo:info=" which will be
+/// visible in build output but won't be treated as a warning.
+pub fn print_cargo_info(message: &str) {
+    println!("{CARGO_INFO_PREFIX}{message}");
+}

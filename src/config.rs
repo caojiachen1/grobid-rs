@@ -1,32 +1,32 @@
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
 use crate::GrobidError;
 use crate::LogLevel;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 /// Configuration for the Grobid engine.
 #[derive(Debug, Clone)]
 pub struct GrobidConfig {
     /// Path to the directory containing the Grobid deployment files.
     pub base_path: PathBuf,
-    
+
     /// Maximum memory allocation for the JVM (-Xmx option).
     pub max_memory: String,
-    
+
     /// Additional JVM options.
     pub jvm_options: Vec<String>,
-    
+
     /// Number of concurrent threads for processing (when using parallel processing).
     pub thread_count: usize,
-    
+
     /// Custom Java system properties.
     pub system_properties: HashMap<String, String>,
-    
+
     /// Verbosity level for logging.
     pub log_level: LogLevel,
-    
+
     /// Whether to prefer vendored installation if available.
     pub prefer_vendored: bool,
-    
+
     /// Analysis configuration for Grobid processing.
     pub analysis_config: Option<GrobidAnalysisConfig>,
 }
@@ -36,16 +36,16 @@ pub struct GrobidConfig {
 pub struct GrobidAnalysisConfig {
     /// Whether to consolidate header metadata with external services
     pub consolidate_header: bool,
-    
+
     /// Whether to consolidate citations with external services
     pub consolidate_citations: bool,
-    
+
     /// Whether to include coordinates for text blocks
     pub include_coordinates: bool,
-    
+
     /// Whether to segment sentences in the output
     pub segment_sentences: bool,
-    
+
     /// Whether to generate raw citations
     pub generate_raw_citations: bool,
 }
@@ -105,7 +105,11 @@ impl GrobidConfig {
     }
 
     /// Add a system property for the JVM.
-    pub fn with_system_property(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn with_system_property(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         self.system_properties.insert(key.into(), value.into());
         self
     }
@@ -136,23 +140,25 @@ impl GrobidConfig {
                 self.base_path.display()
             )));
         }
-        
+
         if !self.base_path.is_dir() {
             return Err(GrobidError::Configuration(format!(
                 "Base path is not a directory: {}",
                 self.base_path.display()
             )));
         }
-        
+
         // Check if the thread count is sensible
         if self.thread_count == 0 {
             return Err(GrobidError::Configuration(
-                "Thread count must be greater than zero".to_string()
+                "Thread count must be greater than zero".to_string(),
             ));
         }
-        
+
         // Check Grobid version compatibility
-        let properties_path = self.base_path.join("grobid/grobid-home/config/grobid.properties");
+        let properties_path = self
+            .base_path
+            .join("grobid/grobid-home/config/grobid.properties");
         if properties_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&properties_path) {
                 // Look for version line (grobid.version=X.Y.Z)
@@ -170,7 +176,7 @@ impl GrobidConfig {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -246,9 +252,9 @@ impl GrobidConfigBuilder {
 
     /// Build the final GrobidConfig.
     pub fn build(self) -> GrobidConfig {
-        let base_path = self.base_path.unwrap_or_else(|| 
-            PathBuf::from(env!("GROBID_RS_ASSETS_PATH"))
-        );
+        let base_path = self
+            .base_path
+            .unwrap_or_else(|| PathBuf::from(env!("GROBID_RS_ASSETS_PATH")));
 
         GrobidConfig {
             base_path,

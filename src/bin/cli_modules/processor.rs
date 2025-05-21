@@ -1,11 +1,11 @@
+use crate::cli_modules::output::{create_spinner, display_cache_stats, write_output};
+use crate::cli_modules::types::{CliExitCode, OutputFormat};
+use grobid_rs::{
+    fulltext_to_tei_cached, process_header_cached, process_references_cached, CacheConfig,
+    FormatConverter,
+};
 use std::path::Path;
 use tracing::error;
-use crate::cli_modules::types::{OutputFormat, CliExitCode};
-use crate::cli_modules::output::{write_output, create_spinner, display_cache_stats};
-use grobid_rs::{
-    CacheConfig, fulltext_to_tei_cached, process_header_cached, process_references_cached,
-    FormatConverter
-};
 
 /// Process a document header
 pub fn process_header(
@@ -13,15 +13,15 @@ pub fn process_header(
     output_format: OutputFormat,
     output_file: &Option<std::path::PathBuf>,
     cache_config: CacheConfig,
-    show_stats: bool
+    show_stats: bool,
 ) -> CliExitCode {
     // Create progress spinner
     let message = format!("Processing header from PDF: {}", pdf_file.display());
     let spinner = create_spinner(&message);
-    
+
     // Process header with caching
     let tei_result = process_header_cached(pdf_file, cache_config);
-    
+
     // Finish progress bar
     if let Some(pb) = spinner {
         if tei_result.is_ok() {
@@ -30,7 +30,7 @@ pub fn process_header(
             pb.finish_with_message("Header processing failed.");
         }
     }
-    
+
     let tei_result = match tei_result {
         Ok(result) => result,
         Err(e) => {
@@ -39,28 +39,24 @@ pub fn process_header(
             return e.into();
         }
     };
-    
+
     // Convert to requested format
     let output = match output_format {
         OutputFormat::Tei => tei_result,
-        OutputFormat::Json => {
-            match FormatConverter::tei_to_json(&tei_result) {
-                Ok(json) => json,
-                Err(e) => {
-                    error!("Failed to convert TEI to JSON: {}", e);
-                    eprintln!("Error: Failed to convert TEI to JSON: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Json => match FormatConverter::tei_to_json(&tei_result) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to convert TEI to JSON: {}", e);
+                eprintln!("Error: Failed to convert TEI to JSON: {}", e);
+                return CliExitCode::FormatConversionError;
             }
         },
-        OutputFormat::Text => {
-            match FormatConverter::tei_to_text(&tei_result) {
-                Ok(text) => text,
-                Err(e) => {
-                    error!("Failed to convert TEI to text: {}", e);
-                    eprintln!("Error: Failed to convert TEI to text: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Text => match FormatConverter::tei_to_text(&tei_result) {
+            Ok(text) => text,
+            Err(e) => {
+                error!("Failed to convert TEI to text: {}", e);
+                eprintln!("Error: Failed to convert TEI to text: {}", e);
+                return CliExitCode::FormatConversionError;
             }
         },
         OutputFormat::Bibtex => {
@@ -69,21 +65,21 @@ pub fn process_header(
             return CliExitCode::InvalidInput;
         }
     };
-    
+
     match write_output(&output, output_file) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             error!("Failed to write output: {}", e);
             eprintln!("Error: Failed to write output: {}", e);
             return CliExitCode::IoError;
         }
     }
-    
+
     // Show cache statistics if requested
     if show_stats {
         display_cache_stats();
     }
-    
+
     CliExitCode::Success
 }
 
@@ -93,15 +89,15 @@ pub fn process_fulltext(
     output_format: OutputFormat,
     output_file: &Option<std::path::PathBuf>,
     cache_config: CacheConfig,
-    show_stats: bool
+    show_stats: bool,
 ) -> CliExitCode {
     // Create progress spinner
     let message = format!("Processing full text from PDF: {}", pdf_file.display());
     let spinner = create_spinner(&message);
-    
+
     // Process fulltext with caching
     let tei_result = fulltext_to_tei_cached(pdf_file, cache_config);
-    
+
     // Finish progress bar
     if let Some(pb) = spinner {
         if tei_result.is_ok() {
@@ -110,7 +106,7 @@ pub fn process_fulltext(
             pb.finish_with_message("Full text processing failed.");
         }
     }
-    
+
     let tei_result = match tei_result {
         Ok(result) => result,
         Err(e) => {
@@ -119,28 +115,24 @@ pub fn process_fulltext(
             return e.into();
         }
     };
-    
+
     // Convert to requested format
     let output = match output_format {
         OutputFormat::Tei => tei_result,
-        OutputFormat::Json => {
-            match FormatConverter::tei_to_json(&tei_result) {
-                Ok(json) => json,
-                Err(e) => {
-                    error!("Failed to convert TEI to JSON: {}", e);
-                    eprintln!("Error: Failed to convert TEI to JSON: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Json => match FormatConverter::tei_to_json(&tei_result) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to convert TEI to JSON: {}", e);
+                eprintln!("Error: Failed to convert TEI to JSON: {}", e);
+                return CliExitCode::FormatConversionError;
             }
         },
-        OutputFormat::Text => {
-            match FormatConverter::tei_to_text(&tei_result) {
-                Ok(text) => text,
-                Err(e) => {
-                    error!("Failed to convert TEI to text: {}", e);
-                    eprintln!("Error: Failed to convert TEI to text: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Text => match FormatConverter::tei_to_text(&tei_result) {
+            Ok(text) => text,
+            Err(e) => {
+                error!("Failed to convert TEI to text: {}", e);
+                eprintln!("Error: Failed to convert TEI to text: {}", e);
+                return CliExitCode::FormatConversionError;
             }
         },
         OutputFormat::Bibtex => {
@@ -149,21 +141,21 @@ pub fn process_fulltext(
             return CliExitCode::InvalidInput;
         }
     };
-    
+
     match write_output(&output, output_file) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             error!("Failed to write output: {}", e);
             eprintln!("Error: Failed to write output: {}", e);
             return CliExitCode::IoError;
         }
     }
-    
+
     // Show cache statistics if requested
     if show_stats {
         display_cache_stats();
     }
-    
+
     CliExitCode::Success
 }
 
@@ -173,15 +165,15 @@ pub fn process_references(
     output_format: OutputFormat,
     output_file: &Option<std::path::PathBuf>,
     cache_config: CacheConfig,
-    show_stats: bool
+    show_stats: bool,
 ) -> CliExitCode {
     // Create progress spinner
     let message = format!("Extracting references from PDF: {}", pdf_file.display());
     let spinner = create_spinner(&message);
-    
+
     // Process references with caching
     let tei_result = process_references_cached(pdf_file, cache_config);
-    
+
     // Finish progress bar
     if let Some(pb) = spinner {
         if tei_result.is_ok() {
@@ -190,7 +182,7 @@ pub fn process_references(
             pb.finish_with_message("References extraction failed.");
         }
     }
-    
+
     let tei_result = match tei_result {
         Ok(result) => result,
         Err(e) => {
@@ -199,55 +191,49 @@ pub fn process_references(
             return e.into();
         }
     };
-    
+
     // Convert to requested format
     let output = match output_format {
         OutputFormat::Tei => tei_result,
-        OutputFormat::Json => {
-            match FormatConverter::tei_to_json(&tei_result) {
-                Ok(json) => json,
-                Err(e) => {
-                    error!("Failed to convert TEI to JSON: {}", e);
-                    eprintln!("Error: Failed to convert TEI to JSON: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Json => match FormatConverter::tei_to_json(&tei_result) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to convert TEI to JSON: {}", e);
+                eprintln!("Error: Failed to convert TEI to JSON: {}", e);
+                return CliExitCode::FormatConversionError;
             }
         },
-        OutputFormat::Text => {
-            match FormatConverter::tei_to_text(&tei_result) {
-                Ok(text) => text,
-                Err(e) => {
-                    error!("Failed to convert TEI to text: {}", e);
-                    eprintln!("Error: Failed to convert TEI to text: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Text => match FormatConverter::tei_to_text(&tei_result) {
+            Ok(text) => text,
+            Err(e) => {
+                error!("Failed to convert TEI to text: {}", e);
+                eprintln!("Error: Failed to convert TEI to text: {}", e);
+                return CliExitCode::FormatConversionError;
             }
         },
-        OutputFormat::Bibtex => {
-            match FormatConverter::tei_refs_to_bibtex(&tei_result) {
-                Ok(bibtex) => bibtex,
-                Err(e) => {
-                    error!("Failed to convert TEI references to BibTeX: {}", e);
-                    eprintln!("Error: Failed to convert TEI references to BibTeX: {}", e);
-                    return CliExitCode::FormatConversionError;
-                }
+        OutputFormat::Bibtex => match FormatConverter::tei_refs_to_bibtex(&tei_result) {
+            Ok(bibtex) => bibtex,
+            Err(e) => {
+                error!("Failed to convert TEI references to BibTeX: {}", e);
+                eprintln!("Error: Failed to convert TEI references to BibTeX: {}", e);
+                return CliExitCode::FormatConversionError;
             }
-        }
+        },
     };
-    
+
     match write_output(&output, output_file) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             error!("Failed to write output: {}", e);
             eprintln!("Error: Failed to write output: {}", e);
             return CliExitCode::IoError;
         }
     }
-    
+
     // Show cache statistics if requested
     if show_stats {
         display_cache_stats();
     }
-    
+
     CliExitCode::Success
 }

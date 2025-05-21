@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 /// Log verbosity levels for Grobid CLI

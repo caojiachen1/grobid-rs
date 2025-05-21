@@ -1,4 +1,3 @@
-use std::env;
 use std::path::{Path, PathBuf};
 
 // Mock implementation for tests - in a real project, this would typically
@@ -16,7 +15,7 @@ enum MockResult {
 // Mock function to track what would be called, using thread_local for test isolation
 #[cfg(test)]
 thread_local! {
-    static MOCK_RESULTS: std::cell::RefCell<Vec<MockResult>> = std::cell::RefCell::new(Vec::new());
+    static MOCK_RESULTS: std::cell::RefCell<Vec<MockResult>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 // Reset the mock results
@@ -105,7 +104,7 @@ mod mock_impl {
 }
 
 #[cfg(test)]
-mod tests {
+mod integration_tests {
     use super::*;
     use crate::GrobidError;
     use std::env;
@@ -132,16 +131,17 @@ mod tests {
             let specific_tmp_dir = suite_base_dir.join(format!("pid_{}_run_{}", pid, id));
 
             if specific_tmp_dir.exists() {
-                fs::remove_dir_all(&specific_tmp_dir).expect(&format!(
-                    "Pre-cleaning: Failed to remove old temp dir {:?}",
-                    specific_tmp_dir
-                ));
+                fs::remove_dir_all(&specific_tmp_dir).unwrap_or_else(|_| {
+                    panic!(
+                        "Pre-cleaning: Failed to remove old temp dir {:?}",
+                        specific_tmp_dir
+                    )
+                });
             }
 
-            fs::create_dir_all(&specific_tmp_dir).expect(&format!(
-                "Failed to create specific temp dir {:?}",
-                specific_tmp_dir
-            ));
+            fs::create_dir_all(&specific_tmp_dir).unwrap_or_else(|_| {
+                panic!("Failed to create specific temp dir {:?}", specific_tmp_dir)
+            });
             TempDir {
                 path: specific_tmp_dir,
             }

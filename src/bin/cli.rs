@@ -1,17 +1,14 @@
-use std::process::ExitCode;
+use clap::Parser;
+use grobid_rs::{init_with_config, reset_cache_stats, CacheConfig, GrobidConfig};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::io::IsTerminal;
+use std::process::ExitCode;
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::FmtSubscriber;
-use clap::Parser;
-use grobid_rs::{
-    init_with_config, GrobidConfig, CacheConfig,
-    reset_cache_stats
-};
-use indicatif::{ProgressBar, ProgressStyle};
 
 mod cli_modules;
-use cli_modules::types::{Args, Commands, CliExitCode};
-use cli_modules::processor::{process_header, process_fulltext, process_references};
+use cli_modules::processor::{process_fulltext, process_header, process_references};
+use cli_modules::types::{Args, CliExitCode, Commands};
 
 fn main() -> ExitCode {
     let args = Args::parse();
@@ -40,7 +37,10 @@ fn main() -> ExitCode {
         return CliExitCode::GenericError.into();
     }
 
-    debug!("Grobid CLI initialized with trace level: {:?}", subscriber_level);
+    debug!(
+        "Grobid CLI initialized with trace level: {:?}",
+        subscriber_level
+    );
 
     // Set up Grobid configuration
     let mut config = GrobidConfig::new(args.grobid_base.clone())
@@ -105,15 +105,36 @@ fn main() -> ExitCode {
 
     // Process the command
     let exit_code = match &args.command {
-        Commands::Header { pdf_file, output_format } => {
-            process_header(pdf_file, *output_format, &args.output_file, cache_config, args.stats)
-        },
-        Commands::Fulltext { pdf_file, output_format } => {
-            process_fulltext(pdf_file, *output_format, &args.output_file, cache_config, args.stats)
-        },
-        Commands::References { pdf_file, output_format } => {
-            process_references(pdf_file, *output_format, &args.output_file, cache_config, args.stats)
-        }
+        Commands::Header {
+            pdf_file,
+            output_format,
+        } => process_header(
+            pdf_file,
+            *output_format,
+            &args.output_file,
+            cache_config,
+            args.stats,
+        ),
+        Commands::Fulltext {
+            pdf_file,
+            output_format,
+        } => process_fulltext(
+            pdf_file,
+            *output_format,
+            &args.output_file,
+            cache_config,
+            args.stats,
+        ),
+        Commands::References {
+            pdf_file,
+            output_format,
+        } => process_references(
+            pdf_file,
+            *output_format,
+            &args.output_file,
+            cache_config,
+            args.stats,
+        ),
     };
 
     exit_code.into()

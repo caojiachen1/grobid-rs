@@ -5,7 +5,7 @@ pub fn run_command(
     cmd_path: &Path,
     args: &[&str],
     current_dir: &Path,
-    env_vars: Option<&[(&str, &Path)]>, 
+    env_vars: Option<&[(&str, &Path)]>,
 ) -> Result<()> {
     let cmd_name = cmd_path.file_name().unwrap_or_default().to_string_lossy();
     print_cargo_warning(&format!(
@@ -47,11 +47,19 @@ pub fn verify_sha256(path: &Path, expected_sha256: &str) -> Result<()> {
         "Verifying SHA256 checksum for {}...",
         path.display()
     ));
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("Failed to open file for SHA256 verification: {}", path.display()))?;
+    let mut file = fs::File::open(path).with_context(|| {
+        format!(
+            "Failed to open file for SHA256 verification: {}",
+            path.display()
+        )
+    })?;
     let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)
-        .with_context(|| format!("Failed to read file for SHA256 verification: {}", path.display()))?;
+    io::copy(&mut file, &mut hasher).with_context(|| {
+        format!(
+            "Failed to read file for SHA256 verification: {}",
+            path.display()
+        )
+    })?;
     let hash = hasher.finalize();
     let hex_hash = format!("{:x}", hash);
 
@@ -70,4 +78,4 @@ pub fn verify_sha256(path: &Path, expected_sha256: &str) -> Result<()> {
             hex_hash
         );
     }
-} 
+}

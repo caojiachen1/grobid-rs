@@ -72,13 +72,17 @@ fn process_fulltext_with_config(pdf_path: &Path, config: &GrobidConfig) -> Resul
         config.include_raw_citations,
         config.include_raw_affiliations,
         config.include_tei_coordinates,
-        config.start_page.map_or("none".to_string(), |p| p.to_string()),
-        config.end_page.map_or("none".to_string(), |p| p.to_string()),
+        config
+            .start_page
+            .map_or("none".to_string(), |p| p.to_string()),
+        config
+            .end_page
+            .map_or("none".to_string(), |p| p.to_string()),
         config.generate_ids,
         config.process_figures_tables,
         pdf_path.display()
     );
-    
+
     Ok(output)
 }
 
@@ -95,7 +99,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify paths (just for example consistency)
     if !grobid_home.exists() || !grobid_home.is_dir() {
-        eprintln!("Error: Grobid home directory not found at {}", grobid_home.display());
+        eprintln!(
+            "Error: Grobid home directory not found at {}",
+            grobid_home.display()
+        );
         process::exit(1);
     }
 
@@ -112,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Example 1: Default Configuration ---");
     let default_config = GrobidConfig::default();
     println!("Configuration: {:?}", default_config);
-    
+
     match process_fulltext_with_config(pdf_path, &default_config) {
         Ok(result) => println!("Result: {}", result),
         Err(e) => eprintln!("Error: {}", e),
@@ -126,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..GrobidConfig::default() // Keep other defaults
     };
     println!("Configuration: {:?}", citation_config);
-    
+
     match process_fulltext_with_config(pdf_path, &citation_config) {
         Ok(result) => println!("Result: {}", result),
         Err(e) => eprintln!("Error: {}", e),
@@ -140,7 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..GrobidConfig::default()
     };
     println!("Configuration: {:?}", layout_config);
-    
+
     match process_fulltext_with_config(pdf_path, &layout_config) {
         Ok(result) => println!("Result: {}", result),
         Err(e) => eprintln!("Error: {}", e),
@@ -154,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..GrobidConfig::default()
     };
     println!("Configuration: {:?}", page_range_config);
-    
+
     match process_fulltext_with_config(pdf_path, &page_range_config) {
         Ok(result) => println!("Result: {}", result),
         Err(e) => eprintln!("Error: {}", e),
