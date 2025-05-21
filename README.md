@@ -18,6 +18,7 @@ grobid-rs enables Rust applications to leverage Grobid's powerful document proce
 - Support for offline builds with vendored dependencies
 - Optimized build system with parallel downloads and streaming extraction
 - Performance-optimized caching with automatic pruning for faster re-processing
+- High-performance CI pipeline with advanced caching strategies
 
 ## Installation
 
@@ -150,8 +151,8 @@ Detailed documentation is available in the `docs/` directory:
 - [Managing Grobid Resources](docs/2_RESOURCES.md)
 - [Packaging and Distribution](docs/3_DISTRIBUTION.md)
 - [Debugging and Advanced Topics](docs/4_ADVANCED.md)
-- [GitHub Actions CI Caching](docs/CI_CACHING.md)
-- [Git Hooks Setup](docs/GIT_HOOKS.md)
+- [GitHub Actions CI Caching](docs/CI_CACHING.md) - Learn about our performance-optimized CI pipeline
+- [Git Hooks Setup](docs/GIT_HOOKS.md) - Automated code formatting and workflow validation
 - [Development Roadmap](docs/PLAN.md)
 
 ## Building from Source
@@ -195,7 +196,12 @@ The build system includes several optimizations:
 - Automatic download resumption for interrupted builds
 - Memory-efficient streaming ZIP extraction
 - Proper cleanup and rebuild when JRE configuration changes
-- GitHub Actions caching for faster CI builds (10-15× speedup)
+- Advanced GitHub Actions optimizations:
+  - Multi-stage dependency caching with cargo-chef
+  - Fast linkers (mold on Linux, system default on macOS)
+  - Efficient Grobid artifact sharing across jobs
+  - Smart testing with cargo-nextest for faster test execution
+  - GitHub Actions caching for faster CI builds (10-15× speedup)
 
 ### Maintenance Tasks
 
