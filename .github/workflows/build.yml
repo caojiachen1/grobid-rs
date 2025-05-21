@@ -68,12 +68,6 @@ jobs:
           target-dir: target/${{ matrix.target }}
           key: ${{ runner.os }}-${{ matrix.target }}
 
-      # Optional: speed up LLVM linking
-      - uses: mozilla-actions/sccache@v0.0.4
-        with:
-          cache: 's3'
-        env:
-          SCCACHE_GHA_ENABLED: 'true'   # GitHub-hosted cache
 
       # JDK needed for build.rs compilation but we use vendored JRE for runtime
       - uses: actions/setup-java@v3
