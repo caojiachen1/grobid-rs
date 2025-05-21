@@ -62,7 +62,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     # Skip macOS and Windows on PRs - only run Ubuntu
-    if: github.event_name != 'pull_request' || matrix.os == 'ubuntu-latest'
+    if: ${{ github.event_name != 'pull_request' || matrix.os == 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
