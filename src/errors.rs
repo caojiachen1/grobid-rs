@@ -40,6 +40,10 @@ pub enum GrobidError {
     /// Version mismatch errors
     #[error("Grobid version mismatch: expected {expected}, found {found}")]
     VersionMismatch { expected: String, found: String },
+
+    /// Cache-related errors
+    #[error("Cache error: {0}")]
+    Cache(String),
 }
 
 impl From<Box<dyn std::error::Error>> for GrobidError {

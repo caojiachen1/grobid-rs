@@ -8,11 +8,27 @@ use std::{
 
 mod config;
 mod errors;
+mod cache;
+mod cache_prune;
 
 pub use config::{
     GrobidAnalysisConfig, GrobidAnalysisConfigBuilder, GrobidConfig, GrobidConfigBuilder,
 };
 pub use errors::GrobidError;
+
+// Cache types and functions
+pub use cache::{
+    CacheConfig, OutputType, 
+    process_with_cache, get_cache_path,
+    get_cache_dir, ensure_cache_dir,
+};
+
+// Cache management functions
+pub use cache_prune::{
+    get_cache_size, get_human_readable_cache_size,
+    prune_cache, clear_cache, get_cache_summary,
+    list_cache_files,
+};
 
 /// Log verbosity levels for Grobid
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -285,6 +301,7 @@ where
 }
 
 // ---------- helpers for calling engine methods ----------
+#[allow(dead_code)]
 fn call_engine_process_method_with_file_input(
     env: &mut JNIEnv<'_>,
     engine: JObject<'_>,

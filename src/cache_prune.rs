@@ -28,6 +28,7 @@ struct CacheFileInfo {
 pub fn get_max_cache_size() -> u64 {
     if let Ok(size_str) = std::env::var(CACHE_MAX_SIZE_ENV) {
         if let Ok(size) = size_str.parse::<u64>() {
+            debug!("Using configured max cache size: {} bytes", size);
             return size;
         }
         warn!("Invalid {} value: '{}', using default", CACHE_MAX_SIZE_ENV, size_str);
@@ -97,18 +98,36 @@ fn format_bytes(bytes: u64) -> String {
 /// List all cache files
 pub fn list_cache_files() -> Result<Vec<PathBuf>, GrobidError> {
     let cache_dir = get_cache_dir()?;
+    debug!("Listing cache files in: {}", cache_dir.display());
+    
+    // First check if the directory exists
+    if !cache_dir.exists() {
+        fs::create_dir_all(&cache_dir)
+            .map_err(|e| {
+                warn!("Failed to create cache directory {}: {}", cache_dir.display(), e);
+                GrobidError::Io(e)
+            })?;
+        debug!("Created cache directory: {}", cache_dir.display());
+        return Ok(Vec::new());
+    }
+    
     let mut files = Vec::new();
     
     for entry in fs::read_dir(&cache_dir)
-        .map_err(|e| GrobidError::Io(e))?
+        .map_err(|e| {
+            warn!("Failed to read cache directory {}: {}", cache_dir.display(), e);
+            GrobidError::Io(e)
+        })?
     {
         let entry = entry.map_err(|e| GrobidError::Io(e))?;
         let metadata = entry.metadata().map_err(|e| GrobidError::Io(e))?;
         if metadata.is_file() {
+            debug!("Found cache file: {}", entry.path().display());
             files.push(entry.path());
         }
     }
     
+    debug!("Found {} files in cache directory", files.len());
     Ok(files)
 }
 
@@ -146,63 +165,120 @@ pub fn get_cache_summary() -> Result<String, GrobidError> {
 /// Get a list of cache files sorted by access time (oldest first)
 fn get_cache_files_by_age() -> Result<Vec<CacheFileInfo>, GrobidError> {
     let cache_dir = get_cache_dir()?;
+    debug!("Finding cache files in: {}", cache_dir.display());
     let mut files = Vec::new();
     
     for entry in fs::read_dir(&cache_dir)
-        .map_err(|e| GrobidError::Io(e))?
+        .map_err(|e| { 
+            warn!("Failed to read cache directory {}: {}", cache_dir.display(), e);
+            GrobidError::Io(e)
+        })?
     {
         let entry = entry.map_err(|e| GrobidError::Io(e))?;
-        let metadata = entry.metadata().map_err(|e| GrobidError::Io(e))?;
+        let path = entry.path();
+        debug!("Examining cache entry: {}", path.display());
+        
+        let metadata = match entry.metadata() {
+            Ok(meta) => meta,
+            Err(e) => {
+                warn!("Failed to get metadata for {}: {}", path.display(), e);
+                continue; // Skip this file if we can't get metadata
+            }
+        };
         
         if metadata.is_file() {
             // Get last access time, fallback to modified time if not available
             let last_accessed = metadata.accessed().unwrap_or_else(|_| {
-                metadata.modified().unwrap_or_else(|_| SystemTime::now())
+                debug!("Could not get access time for {}, falling back to modified time", path.display());
+                metadata.modified().unwrap_or_else(|_| {
+                    debug!("Could not get modified time for {}, using current time", path.display());
+                    SystemTime::now()
+                })
             });
             
+            let file_size = metadata.len();
+            debug!("Adding cache file: {} (size: {}, last accessed: {:?})",
+                path.display(), format_bytes(file_size), last_accessed);
+                
             files.push(CacheFileInfo {
-                path: entry.path(),
-                size: metadata.len(),
+                path,
+                size: file_size,
                 last_accessed,
             });
+        } else {
+            debug!("Skipping non-file entry: {}", path.display());
         }
     }
+    
+    debug!("Found {} cache files to consider for pruning", files.len());
     
     // Sort by access time (oldest first)
     files.sort_by(|a, b| a.last_accessed.cmp(&b.last_accessed));
     
-    Ok(files)
+    if !files.is_empty() {
+        debug!("Oldest file: {} (accessed: {:?})", 
+            files.first().unwrap().path.display(),
+            files.first().unwrap().last_accessed);
+        debug!("Newest file: {} (accessed: {:?})", 
+            files.last().unwrap().path.display(),
+            files.last().unwrap().last_accessed);
+    }
+    // Sort by access time (oldest first)
+files.sort_by(|a, b| a.last_accessed.cmp(&b.last_accessed));
+    
+Ok(files)
 }
 
 /// Prune the cache to stay under the specified size limit
 /// 
-/// Returns the number of files removed
+/// Returns a tuple with the number of files removed and the number of bytes removed
 pub fn prune_cache(max_size_bytes: u64) -> Result<(usize, u64), GrobidError> {
-    let current_size = get_cache_size()?;
+// Fresh lookup of cache directory each time to respect environment changes
+let cache_dir = get_cache_dir()?;
+debug!("Pruning cache directory: {}", cache_dir.display());
+    
+// List files in the directory to confirm it exists and has contents
+match fs::read_dir(&cache_dir) {
+    Ok(entries) => {
+        let count = entries.count();
+        debug!("Found {} entries in cache directory", count);
+    },
+    Err(e) => {
+        warn!("Failed to read cache directory {}: {}", cache_dir.display(), e);
+    }
+}
+    
+let current_size = get_cache_size()?;
     
     // If we're already under the limit, nothing to do
     if current_size <= max_size_bytes {
-        debug!("Cache is already under the size limit ({} <= {})", 
+        info!("Cache is already under the size limit ({} <= {})", 
             format_bytes(current_size), format_bytes(max_size_bytes));
         return Ok((0, 0));
     }
     
-    info!("Pruning cache: current size {} exceeds limit {}", 
-        format_bytes(current_size), format_bytes(max_size_bytes));
+    info!("Pruning cache: current size {} exceeds limit {} (needs to remove at least {} bytes)", 
+        format_bytes(current_size), format_bytes(max_size_bytes), 
+        format_bytes(current_size.saturating_sub(max_size_bytes)));
     
     // Get list of files sorted by access time
     let files = get_cache_files_by_age()?;
     
     // Target size is slightly below the max to provide a buffer
     let target_size = (max_size_bytes as f64 * 0.9) as u64;
-    let _bytes_to_remove = current_size.saturating_sub(target_size);
+    let bytes_to_remove = current_size.saturating_sub(target_size);
     
     let mut bytes_removed = 0;
     let mut files_removed = 0;
     
+    // Force removal of at least one file if we're over the limit
+    // This prevents the function from returning without removing anything
+    let mut removed_at_least_one = false;
+    
     // Remove files until we're under the target size
     for file in files {
-        if current_size - bytes_removed <= target_size {
+        // Always remove at least one file if we're over the limit
+        if current_size - bytes_removed <= target_size && removed_at_least_one {
             break;
         }
         
@@ -214,9 +290,46 @@ pub fn prune_cache(max_size_bytes: u64) -> Result<(usize, u64), GrobidError> {
                 
                 bytes_removed += file.size;
                 files_removed += 1;
+                removed_at_least_one = true;
             },
             Err(e) => {
                 warn!("Failed to remove cache file {}: {}", file.path.display(), e);
+            }
+        }
+    }
+    
+    // If we didn't remove any files but need to, let's force removal of all files
+    if files_removed == 0 && bytes_to_remove > 0 {
+        info!("No files removed during normal pruning. Attempting to force-remove files.");
+        let all_files = list_cache_files()?;
+        
+        if all_files.is_empty() {
+            info!("No cache files found to force-remove. Cache directory may be empty.");
+        } else {
+            info!("Found {} files to consider for force removal", all_files.len());
+        }
+        
+        for path in all_files {
+            info!("Trying to force-remove: {}", path.display());
+            if let Ok(metadata) = fs::metadata(&path) {
+                if metadata.is_file() {
+                    let size = metadata.len();
+                    match fs::remove_file(&path) {
+                        Ok(_) => {
+                            info!("Force removed cache file: {} ({})", 
+                                path.display(), format_bytes(size));
+                            bytes_removed += size;
+                            files_removed += 1;
+                        },
+                        Err(e) => {
+                            warn!("Failed to force-remove cache file {}: {}", path.display(), e);
+                        }
+                    }
+                } else {
+                    debug!("Skipping non-file entry: {}", path.display());
+                }
+            } else {
+                warn!("Failed to get metadata for file to force-remove: {}", path.display());
             }
         }
     }
