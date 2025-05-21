@@ -7,6 +7,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Permissions needed for GitHub token
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
   CARGO_TERM_COLOR: always
   GROBID_VERSION: '0.8.2'
@@ -57,19 +62,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      # Filter changed files
-      - uses: dorny/paths-filter@v2
-        id: changes
         with:
-          filters: |
-            src:
-              - 'src/**'
-              - 'build.rs'
-              - 'build_modules/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'vendor/**'
+          fetch-depth: 0
 
       # Install Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
@@ -130,24 +124,16 @@ jobs:
           Add-Content $env:GITHUB_PATH "$zstdPath"
           echo "Installed zstd to $zstdPath"
       
-      # Build crate only if source code has changed
+      # Build crate
       - name: cargo build
-        if: ${{ steps.changes.outputs.src == 'true' }}
         run: cargo build --release --target ${{ matrix.target }} --features cli --locked
-        
-      # Skip build if source hasn't changed (for documentation-only PRs)
-      - name: Skip build
-        if: ${{ steps.changes.outputs.src != 'true' }}
-        run: echo "Skipping build - no source changes detected"
 
       # Run fast tests first
       - name: Run unit tests
-        if: ${{ steps.changes.outputs.src == 'true' }}
         run: cargo test --lib --bins --target ${{ matrix.target }} -- --nocapture
 
       # Run integration tests separately
       - name: Run integration tests
-        if: ${{ steps.changes.outputs.src == 'true' }}
         run: cargo test --test="*" --target ${{ matrix.target }} -- --nocapture
     
   # Build job for PRs (Ubuntu only)
@@ -158,19 +144,8 @@ jobs:
       target: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
-
-      # Filter changed files
-      - uses: dorny/paths-filter@v2
-        id: changes
         with:
-          filters: |
-            src:
-              - 'src/**'
-              - 'build.rs'
-              - 'build_modules/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'vendor/**'
+          fetch-depth: 0
 
       # Install Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
@@ -231,22 +206,14 @@ jobs:
           Add-Content $env:GITHUB_PATH "$zstdPath"
           echo "Installed zstd to $zstdPath"
       
-      # Build crate only if source code has changed
+      # Build crate
       - name: cargo build
-        if: ${{ steps.changes.outputs.src == 'true' }}
-        run: cargo build --release --target ${{ matrix.target || env.target }} --features cli --locked
-        
-      # Skip build if source hasn't changed (for documentation-only PRs)
-      - name: Skip build
-        if: ${{ steps.changes.outputs.src != 'true' }}
-        run: echo "Skipping build - no source changes detected"
+        run: cargo build --release --target ${{ env.target }} --features cli --locked
 
       # Run fast tests first
       - name: Run unit tests
-        if: ${{ steps.changes.outputs.src == 'true' }}
-        run: cargo test --lib --bins --target ${{ matrix.target || env.target }} -- --nocapture
+        run: cargo test --lib --bins --target ${{ env.target }} -- --nocapture
 
       # Run integration tests separately
       - name: Run integration tests
-        if: ${{ steps.changes.outputs.src == 'true' }}
-        run: cargo test --test="*" --target ${{ matrix.target || env.target }} -- --nocapture
+        run: cargo test --test="*" --target ${{ env.target }} -- --nocapture
