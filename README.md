@@ -121,7 +121,8 @@ Detailed documentation is available in the `docs/` directory:
 - [Managing Grobid Resources](docs/2_RESOURCES.md)
 - [Packaging and Distribution](docs/3_DISTRIBUTION.md)
 - [Debugging and Advanced Topics](docs/4_ADVANCED.md)
-- [GitHub Actions Caching](docs/GITHUB_ACTIONS_CACHING.md)
+- [GitHub Actions CI Caching](docs/CI_CACHING.md)
+- [Git Hooks Setup](docs/GIT_HOOKS.md)
 - [Development Roadmap](docs/PLAN.md)
 
 ## Building from Source
@@ -168,6 +169,23 @@ The build system includes several optimizations:
 - GitHub Actions caching for faster CI builds (10-15× speedup)
 
 ### Maintenance Tasks
+
+### Git Hooks
+
+We recommend setting up git hooks to automatically format code with rustfmt before commits:
+
+```bash
+# Install rustfmt if you don't have it
+rustup component add rustfmt
+
+# Set up a pre-commit hook to run rustfmt
+mkdir -p .git/hooks
+curl -o .git/hooks/pre-commit https://raw.githubusercontent.com/agustif/grobid-rs/master/scripts/pre-commit.sh
+chmod +x .git/hooks/pre-commit
+```
+
+See [Git Hooks Documentation](docs/GIT_HOOKS.md) for more options and advanced configurations.
+
 ### Vendoring Dependencies
 
 To vendor the minimal necessary files for offline builds:
