@@ -40,9 +40,9 @@ jobs:
               - '.cargo/**'
               - '.github/workflows/**'
 
-  # Fast syntactic & lint checks – always run
+  # Fast syntactic & lint checks
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-8core # 8 vCPU • 32 GB RAM for faster builds
     steps:
       - uses: actions/checkout@v4
 
@@ -83,12 +83,19 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ runner.os }}-rust-1.87.0-${{ hashFiles('**/Cargo.lock') }}
 
-      # Format code (auto-fixes issues instead of just checking)
-      - run: cargo fmt --all
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      # Always run cargo check for basic syntax verification
       - run: cargo check --workspace
+      
+      # Only run full linting on PRs (save time on pushes)
+      - name: Run rustfmt
+        if: github.event_name == 'pull_request'
+        run: cargo fmt --all
+        
+      - name: Run clippy
+        if: github.event_name == 'pull_request'
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
-  # Full build & test (matrix) – push only
+  # Full build & test (matrix) – push only when source code changes
   build:
     needs: changes
     if: github.event_name == 'push' && needs.changes.outputs.src == 'true'
@@ -96,7 +103,7 @@ jobs:
       fail-fast: false         # don't cancel other OSes if one fails
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04-8core
             target: x86_64-unknown-linux-gnu
           - os: macos-14
             target: aarch64-apple-darwin
@@ -146,8 +153,8 @@ jobs:
           target-dir: target/${{ matrix.target }}
           key: ${{ runner.os }}-${{ matrix.target }}-rust-1.87.0-${{ hashFiles('**/Cargo.lock') }}
 
-      # Optional: speed-up incremental builds / LLVM linking
-      - uses: mozilla-actions/sccache-action@v0.0.8
+      # Speed-up incremental builds with sccache + GHA backend
+      - uses: mozilla-actions/sccache-action@v0.0.4
         env:
           SCCACHE_GHA_ENABLED: "true"
 
@@ -193,9 +200,9 @@ jobs:
           # key on Grobid version + OS; bump when you upgrade Grobid
           key: grobid-${{ env.GROBID_VERSION }}-${{ matrix.os }}
 
-      # Configure build.rs behavior based on cache status
+      # Configure build.rs behavior based on cache status - run only when source code changed
       - name: Configure Grobid build strategy
-        if: steps.grobid-cache.outputs.cache-hit != 'true'
+        if: steps.grobid-cache.outputs.cache-hit != 'true' && needs.changes.outputs.src == 'true'
         run: |
           # Only set FORCE_GROBID_REBUILD if we don't have vendored files
           # This lets build.rs use vendored files if available instead of downloading
@@ -208,15 +215,15 @@ jobs:
 
       # Install zstd for decompression (needed for .zst files)
       - name: Install zstd (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
         run: brew install zstd
         
       - name: Install zstd (Ubuntu)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
         run: sudo apt-get install -y zstd
         
       # Windows: add zstd to PATH
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
         name: Install zstd
         shell: pwsh
         run: |
@@ -228,31 +235,32 @@ jobs:
       #  Build → unit tests → integration tests (fast-fail order)
       # ----------------------------------------------------------
       - name: Build (release) (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
         run: cargo build --release --locked -j $(nproc) --target ${{ matrix.target }} --features cli
         
       - name: Build (release) (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
         run: cargo build --release --locked -j $(sysctl -n hw.ncpu) --target ${{ matrix.target }} --features cli
         
       - name: Build (release) (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
         shell: pwsh
         run: cargo build --release --locked -j $env:NUMBER_OF_PROCESSORS --target ${{ matrix.target }} --features cli
 
       # Install nextest for faster test runs
       - uses: taiki-e/install-action@nextest
+        if: needs.changes.outputs.src == 'true'
       
       # Run tests with nextest (much faster than standard cargo test)
       - name: Unit + integration tests (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.changes.outputs.src == 'true'
         run: cargo nextest run --release -j $(nproc) --target ${{ matrix.target }}
         
       - name: Unit + integration tests (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.changes.outputs.src == 'true'
         run: cargo nextest run --release -j $(sysctl -n hw.ncpu) --target ${{ matrix.target }}
         
       - name: Unit + integration tests (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.changes.outputs.src == 'true'
         shell: pwsh
         run: cargo nextest run --release -j $env:NUMBER_OF_PROCESSORS --target ${{ matrix.target }}
