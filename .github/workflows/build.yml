@@ -74,7 +74,6 @@ jobs:
         with: 
           distribution: temurin
           java-version: '11'
-          cache: false # Don't cache Maven artifacts
           
       # Prepare vendor directory for JRE/Grobid
       - name: Create vendor directories (Unix)
