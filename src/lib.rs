@@ -1,16 +1,28 @@
-use jni::{objects::*, JNIEnv, JavaVM, InitArgsBuilder, JNIVersion};
+use jni::{objects::*, JavaVM, InitArgsBuilder, JNIVersion};
 use once_cell::sync::OnceCell;
 use std::{
     path::{Path, PathBuf}, 
-    process::Command, 
     sync::Mutex
 };
+use tracing::{debug, error, info, warn};
 
 mod config;
 mod errors;
+mod jni_handle;
+mod engine;
+mod cache;
+pub mod format;
 
 pub use config::{GrobidConfig, GrobidAnalysisConfig, GrobidConfigBuilder, GrobidAnalysisConfigBuilder};
 pub use errors::GrobidError;
+pub use jni_handle::JniHandle;
+pub use engine::{fulltext_to_tei, process_header, process_references, run_pdfalto};
+pub use cache::{
+    CacheConfig, OutputType, CacheStats, get_cache_stats, reset_cache_stats,
+    fulltext_to_tei_cached, process_header_cached, process_references_cached,
+    get_cache_dir, get_cache_path, cache_exists, read_cache, write_cache
+};
+pub use format::FormatConverter;
 
 
 /// Log verbosity levels for Grobid
@@ -50,10 +62,19 @@ pub fn init(base: &Path) -> Result<(), GrobidError> {
 /// The `runtime` directory is expected to have a subdirectory named after the OS 
 /// (e.g., "linux-latest", "macos-14", "windows-latest") which is created by the build script.
 pub fn init_with_config(config: &GrobidConfig) -> Result<(), GrobidError> {
-    if JVM.get().is_some() { return Ok(()); }
+    info!("Initializing Grobid with configuration: {:?}", config);
+    if JVM.get().is_some() { 
+        debug!("JVM already initialized, reusing existing instance");
+        return Ok(()); 
+    }
     
     // Validate the configuration
+    debug!("Validating configuration");
     config.validate()?;
+    
+    // Check Grobid version compatibility
+    debug!("Checking Grobid version compatibility");
+    check_grobid_version(&config.base_path)?;
 
     // ---------- paths ----------
     // Use the JLink runtime path provided at compile time
@@ -129,9 +150,18 @@ pub fn init_with_config(config: &GrobidConfig) -> Result<(), GrobidError> {
         .map_err(|e| GrobidError::JvmInitialization(e.to_string()))?;
 
     // ---------- start JVM ----------
+    info!("Starting JVM with library at {}", jvm_lib.display());
     let jvm_lib_path_buf = jvm_lib.clone();
-    let jvm = JavaVM::with_libjvm(args, move || Ok(jvm_lib_path_buf))
-        .map_err(|e| GrobidError::JvmInitialization(e.to_string()))?;
+    let jvm = match JavaVM::with_libjvm(args, move || Ok(jvm_lib_path_buf)) {
+        Ok(jvm) => {
+            info!("JVM started successfully");
+            jvm
+        },
+        Err(e) => {
+            error!("Failed to start JVM: {}", e);
+            return Err(GrobidError::JvmInitialization(e.to_string()));
+        }
+    };
     
     { // New scope for env
         let mut env = jvm.attach_current_thread().map_err(GrobidError::Jni)?;
@@ -149,9 +179,15 @@ pub fn init_with_config(config: &GrobidConfig) -> Result<(), GrobidError> {
             .map_err(GrobidError::Jni)?;
 
         // ---------- init Grobid ----------
+        info!("Initializing Grobid engine");
+        debug!("Finding GrobidFactory class");
         let factory_cls = env.find_class("org/grobid/core/factory/GrobidFactory").map_err(GrobidError::Jni)?;
+        
+        debug!("Getting GrobidFactory instance");
         let factory = env.call_static_method(factory_cls, "getInstance", "()Lorg/grobid/core/factory/GrobidFactory;", &[])
             .map_err(GrobidError::Jni)?.l().map_err(GrobidError::Jni)?;
+        
+        debug!("Creating Grobid engine");
         let engine_obj = env.call_method(factory, "createEngine", "()Lorg/grobid/core/engines/Engine;", &[])
             .map_err(GrobidError::Jni)?.l().map_err(GrobidError::Jni)?;
 
@@ -162,217 +198,73 @@ pub fn init_with_config(config: &GrobidConfig) -> Result<(), GrobidError> {
     } // env is dropped here
 
     if JVM.set(jvm).is_err() {
+        error!("Failed to set JVM global reference: JVM already initialized");
         return Err(GrobidError::JvmInitialization("JVM already initialized".to_string()));
     }
 
+    info!("Grobid initialized successfully");
     Ok(())
 }
 
-// ---------------- helper: attach & handle exceptions ------------------
-fn with_env<F, R>(f: F) -> Result<R, GrobidError>
-where
-    F: FnOnce(&mut JNIEnv<'_>, JObject<'_>) -> Result<R, GrobidError>,
-{
-    let jvm = JVM.get().ok_or(GrobidError::NotInitialised)?;
-    let mut guard = jvm.attach_current_thread().map_err(GrobidError::Jni)?;
-    let env_mut_ref = &mut guard;
+// JniHandle is now defined in jni_handle.rs
 
-    // Set the context classloader for this thread too, to ensure consistent behavior
-    let thread_cls = env_mut_ref.find_class("java/lang/Thread").map_err(GrobidError::Jni)?;
-    let current_thread = env_mut_ref.call_static_method(thread_cls, "currentThread", "()Ljava/lang/Thread;", &[])
-        .map_err(GrobidError::Jni)?.l().map_err(GrobidError::Jni)?;
+// ---------------- version compatibility check ----------
+/// Check if the installed Grobid version matches the expected version.
+/// 
+/// This helps prevent cryptic Java errors by validating version compatibility
+/// before attempting to initialize the JVM and Grobid engine.
+fn check_grobid_version(base_path: &Path) -> Result<(), GrobidError> {
+    let properties_path = base_path.join("grobid-home/config/grobid.properties");
     
-    let system_cls = env_mut_ref.find_class("java/lang/ClassLoader").map_err(GrobidError::Jni)?;
-    let system_classloader = env_mut_ref.call_static_method(system_cls, "getSystemClassLoader", "()Ljava/lang/ClassLoader;", &[])
-        .map_err(GrobidError::Jni)?.l().map_err(GrobidError::Jni)?;
+    debug!("Checking Grobid version in {}", properties_path.display());
     
-    env_mut_ref.call_method(current_thread, "setContextClassLoader", "(Ljava/lang/ClassLoader;)V", &[JValue::Object(&system_classloader)])
-        .map_err(GrobidError::Jni)?;
-
-    let engine_obj = ENGINE.get().ok_or(GrobidError::NotInitialised)?;
-    
-    let locked_engine_gref = engine_obj.lock().unwrap();
-    let raw_engine_ptr = (*locked_engine_gref).as_raw();
-    let engine_jobject = env_mut_ref.new_local_ref(unsafe { JObject::from_raw(raw_engine_ptr) })?;
-    
-    let out = f(env_mut_ref, engine_jobject)?;
-    if guard.exception_check().map_err(GrobidError::Jni)? {
-        let exception = guard.exception_occurred()?;
-        guard.exception_describe().ok(); // Print details to stderr
-        guard.exception_clear().ok();
-        let msg_obj = guard.call_method(exception, "toString", "()Ljava/lang/String;", &[]);
-        let java_msg = match msg_obj {
-            Ok(msg_jval) => match msg_jval.l() {
-                Ok(msg_l) => guard.get_string(&JString::from(msg_l)).map(|s| s.into()).unwrap_or_else(|_| "Failed to get exception message".to_string()),
-                Err(_) => "Exception object was null or not a String".to_string(),
-            },
-            Err(_) => "Failed to call toString on exception object".to_string(),
-        };
-        return Err(GrobidError::Java(java_msg));
+    if !properties_path.exists() {
+        // For development purposes, we'll log a warning but continue
+        let warning_msg = format!(
+            "Grobid properties file not found at {}. Version check skipped.",
+            properties_path.display()
+        );
+        warn!("{}", warning_msg);
+        return Ok(());
     }
-    Ok(out)
-}
-
-// ---------- helpers for calling engine methods ----------
-fn call_engine_process_method_with_file_input(
-    env: &mut JNIEnv<'_>,
-    engine: JObject<'_>,
-    method_name: &str,
-    pdf_path: &Path,
-) -> Result<String, GrobidError> {
-    let file_cls = env.find_class("java/io/File")?;
-    let j_path_str = env.new_string(pdf_path.to_string_lossy())?;
-    let j_file_obj = env.new_object(file_cls, "(Ljava/lang/String;)V", &[JValue::from(&j_path_str)])?;
-
-    let j_result_string_obj = env.call_method(
-        engine,
-        method_name,
-        "(Ljava/io/File;)Ljava/lang/String;",
-        &[JValue::from(&j_file_obj)],
-    )?.l().map_err(GrobidError::from)?;
-
-    // Convert to Rust String internally
-    let result_string = env.get_string(&JString::from(j_result_string_obj))?.into();
-    Ok(result_string)
-}
-
-fn call_engine_fulltext_to_tei(
-    env: &mut JNIEnv<'_>,
-    engine: JObject<'_>,
-    pdf_path: &Path,
-) -> Result<String, GrobidError> {
-    let file_cls: JClass<'_> = env.find_class("java/io/File")?;
-    let j_path_str: JString<'_> = env.new_string(pdf_path.to_string_lossy())?;
-    let j_file_obj: JObject<'_> = env.new_object(file_cls, "(Ljava/lang/String;)V", &[JValue::from(&j_path_str)])?;
-
-    let cfg_cls: JClass<'_> = env.find_class("org/grobid/core/engines/config/GrobidAnalysisConfig")?;
-    let cfg_obj: JObject<'_> = env.call_static_method(cfg_cls, "defaultInstance", "()Lorg/grobid/core/engines/config/GrobidAnalysisConfig;", &[])?.l()?;
-
-    let j_tei_string_obj: JObject<'_> = env.call_method(
-        engine,
-        "fullTextToTEI",
-        "(Ljava/io/File;Lorg/grobid/core/engines/config/GrobidAnalysisConfig;)Ljava/lang/String;",
-        &[JValue::from(&j_file_obj), JValue::from(&cfg_obj)],
-    )?.l().map_err(GrobidError::from)?;
-
-    // Convert to Rust String internally
-    let tei_string = env.get_string(&JString::from(j_tei_string_obj))?.into();
-    Ok(tei_string)
-}
-
-// New helper for calling the correct processHeader overload that accepts (String, BiblioItem)
-fn call_engine_process_header(
-    env: &mut JNIEnv<'_>,
-    engine: JObject<'_>,
-    pdf_path: &Path,
-) -> Result<String, GrobidError> {
-    // Convert Rust Path to Java String
-    let j_path_str: JString<'_> = env.new_string(pdf_path.to_string_lossy())?;
-    // Instantiate a new BiblioItem
-    let biblio_cls: JClass<'_> = env.find_class("org/grobid/core/data/BiblioItem")?;
-    let biblio_obj: JObject<'_> = env.new_object(biblio_cls, "()V", &[])?;
-    // Call Engine.processHeader(String, BiblioItem)
-    let j_result_obj: JObject<'_> = env.call_method(
-        engine,
-        "processHeader",
-        "(Ljava/lang/String;Lorg/grobid/core/data/BiblioItem;)Ljava/lang/String;",
-        &[JValue::from(&j_path_str), JValue::from(&biblio_obj)],
-    )?.l().map_err(GrobidError::from)?;
-    // Convert Java String to Rust String
-    let result_string = env.get_string(&JString::from(j_result_obj))?.into();
-    Ok(result_string)
-}
-
-fn call_engine_process_references(
-    env: &mut JNIEnv<'_>,
-    engine: JObject<'_>,
-    pdf_path: &Path,
-) -> Result<String, GrobidError> {
-    // Convert Rust Path to Java File object
-    let file_cls: JClass<'_> = env.find_class("java/io/File")?;
-    let j_path_str: JString<'_> = env.new_string(pdf_path.to_string_lossy())?;
-    let j_file: JObject<'_> = env.new_object(file_cls, "(Ljava/lang/String;)V", &[JValue::from(&j_path_str)])?;
     
-    // Call Engine.processReferences(File, int)
-    // The int parameter is the consolidation option (0 = no consolidation)
-    let j_bib_list: JObject<'_> = env.call_method(
-        engine,
-        "processReferences",
-        "(Ljava/io/File;I)Ljava/util/List;",
-        &[JValue::from(&j_file), JValue::from(0)],
-    )?.l().map_err(GrobidError::from)?;
-    
-    // Call the static method references2TEI to convert BibDataSet list to TEI String
-    let empty_path: JString<'_> = env.new_string("")?;
-    
-    let j_result_obj: JObject<'_> = env.call_static_method(
-        "org/grobid/core/engines/Engine",
-        "references2TEI",
-        "(Ljava/lang/String;Ljava/util/List;)Ljava/lang/String;",
-        &[JValue::from(&empty_path), JValue::from(&j_bib_list)],
-    )?.l().map_err(GrobidError::from)?;
-    
-    // Convert Java String to Rust String
-    let result_string = env.get_string(&JString::from(j_result_obj))?.into();
-    Ok(result_string)
-}
-
-// ---------------- public API ------------------
-
-pub fn fulltext_to_tei(pdf: &Path) -> Result<String, GrobidError> {
-    with_env(|env: &mut JNIEnv<'_>, engine: JObject<'_>| {
-        // Now this directly returns String
-        call_engine_fulltext_to_tei(env, engine, pdf)
-    })
-}
-
-pub fn process_header(pdf: &Path) -> Result<String, GrobidError> {
-    with_env(|env: &mut JNIEnv<'_>, engine: JObject<'_>| {
-        // Call the correct processHeader overload with String and BiblioItem
-        call_engine_process_header(env, engine, pdf)
-    })
-}
-
-pub fn process_references(pdf: &Path) -> Result<String, GrobidError> {
-    with_env(|env: &mut JNIEnv<'_>, engine: JObject<'_>| {
-        call_engine_process_references(env, engine, pdf)
-    })
-}
-
-// ---------------- pdfalto helper ------------------
-/// Run pdfalto and return the path to the generated ALTO XML.
-pub fn run_pdfalto(pdf: &Path, grobid_home: &Path) -> Result<PathBuf, GrobidError> {
-    let bin_name = match std::env::consts::OS {
-        "windows" => "pdfalto.exe",
-        _ => "pdfalto",
-    };
-    let platform_name = match std::env::consts::OS {
-        "windows" => "win-64",
-        "macos" => {
-            if cfg!(target_arch = "aarch64") {
-                "mac_arm-64"
-            } else {
-                "mac-64"
-            }
+    let content = match std::fs::read_to_string(&properties_path) {
+        Ok(content) => content,
+        Err(e) => {
+            // For development purposes, we'll log a warning but continue
+            let warning_msg = format!("Failed to read Grobid properties file: {}. Version check skipped.", e);
+            warn!("{}", warning_msg);
+            return Ok(());
         }
-        _ => "lin-64",
     };
-
-    let bin = grobid_home.join("pdfalto").join(platform_name).join(bin_name);
-
-    if !bin.exists() {
-        return Err(GrobidError::PdfAlto(format!("pdfalto binary not found at {}", bin.display())));
+    
+    // Look for version line (grobid.version=X.Y.Z)
+    if let Some(line) = content.lines().find(|l| l.trim().starts_with("grobid.version=")) {
+        if let Some(found_version) = line.trim().strip_prefix("grobid.version=") {
+            let found_version = found_version.trim();
+            debug!("Found Grobid version: {}", found_version);
+            
+            // Compare with expected version
+            if !found_version.starts_with(GROBID_VERSION) {
+                warn!("Grobid version mismatch: expected {}, found {}. This may cause issues.", 
+                       GROBID_VERSION, found_version);
+                // For now, we'll continue despite version mismatch
+                return Ok(());
+            }
+            
+            // Version matches, return Ok
+            info!("Grobid version check passed: {}", GROBID_VERSION);
+            return Ok(());
+        }
     }
-    let out_xml = pdf.with_extension("alto.xml");
-    let status = Command::new(&bin)
-        .arg("--inputFile").arg(pdf)
-        .arg("--outputFile").arg(&out_xml)
-        .status()
-        .map_err(|e| GrobidError::PdfAlto(format!("pdfalto call failed: {}", e)))?;
-    if !status.success() {
-        return Err(GrobidError::PdfAlto(format!("pdfalto failed with status {:?}", status.code())));
-    }
-    Ok(out_xml)
+    
+    // Version property not found in the file
+    let warning_msg = format!(
+        "Grobid version not found in properties file. Expected version: {}. Version check skipped.",
+        GROBID_VERSION
+    );
+    warn!("{}", warning_msg);
+    Ok(())
 }
 
 #[cfg(test)]
