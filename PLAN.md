@@ -108,14 +108,17 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
     *   **Task:** `grobid-cli upgrade [--nightly]` to fetch new binary + assets.
     *   **Why / Benefit:** Easier updates for users not familiar with `cargo install` or manual bundle downloads.
     *   **Implementation:** Use `self_update` crate. Requires hosting release binaries/assets.
-- [ ] **Packaging: Feature Flags for Slimmer Binaries**
-    *   **Task:** Introduce Cargo features like `pdfalto` (default), `http-fallback`, `json-output`, `benchmark`.
-    *   **Why / Benefit:** Allows users to build smaller binaries if they don't need all functionality.
-    *   **Implementation:** Use `cargo bloat` to measure impact.
+- [x] **Packaging: Feature Flags for Slimmer Binaries**
+    *   **Completed:** Implemented feature flags for modular functionality
+    *   **Details:** Created features for 'cli', 'parallel', and other optional components. Allows users to build binaries with only needed functionality.
 - [ ] **Core: Graceful Shutdown**
     *   **Task:** Provide `pub fn shutdown()` to detach threads and potentially signal JVM to exit.
     *   **Why / Benefit:** For embedded applications wanting to unload Grobid resources.
     *   **Implementation:** Detach threads. For JVM exit, consider `System.exit(0)` in a daemon thread (won't fully free all memory from host OS perspective but stops Grobid's pools).
+
+- [x] **Distribution: Vendored Dependencies for Offline Builds**
+    *   **Completed:** Implemented comprehensive vendoring system for offline builds
+    *   **Details:** Created xtask/src/bin/vendor.rs utility to create minimal vendor bundles, implemented check_for_vendored_files() and use_vendored_files() in build.rs. Fully supports air-gapped environments.
 
 ## Broader Development Goals
 
