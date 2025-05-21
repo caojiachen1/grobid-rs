@@ -68,6 +68,12 @@ jobs:
           target-dir: target/${{ matrix.target }}
           key: ${{ runner.os }}-${{ matrix.target }}
 
+      # Optional: speed-up incremental builds / LLVM linking
+      - uses: Mozilla-Actions/sccache-action@v0.0.8
+        with:
+          cache: gha
+        env:
+          SCCACHE_GHA_ENABLED: "true"
 
       # JDK needed for build.rs compilation but we use vendored JRE for runtime
       - uses: actions/setup-java@v3
