@@ -1,11 +1,55 @@
 name: build
 on: [push, pull_request]
 
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   GROBID_VERSION: '0.8.2'
+  RUSTC_WRAPPER: sccache
 
 jobs:
+  # Fast check job for PRs
+  check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      
+      - name: Install sccache
+        run: |
+          SCCACHE_VERSION=0.5.3
+          curl -L "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv sccache-*/sccache /usr/local/bin/sccache
+      
+      - name: Cache Cargo registry and sccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sccache
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+      
+      - name: Format check
+        run: cargo fmt -- --check
+      
+      - name: Clippy check
+        run: cargo clippy -- -D warnings
+      
+      - name: Check compilation
+        run: cargo check
+
+  # Main build job
   build:
     strategy:
       matrix:
@@ -17,13 +61,67 @@ jobs:
           - os: windows-latest # win‑x64
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    # Skip macOS and Windows on PRs - only run Ubuntu
+    if: github.event_name != 'pull_request' || matrix.os == 'ubuntu-latest'
     steps:
       - uses: actions/checkout@v4
+
+      # Filter changed files
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'build.rs'
+              - 'build_modules/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'vendor/**'
 
       # Install Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+           
+      # Install and configure sccache (all platforms)
+      - name: Install sccache (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          SCCACHE_VERSION=0.5.3
+          curl -L "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv sccache-*/sccache /usr/local/bin/sccache
+          
+      - name: Install sccache (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          SCCACHE_VERSION=0.5.3
+          curl -L "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz" | tar xz
+          sudo mv sccache-*/sccache /usr/local/bin/sccache
+          
+      - name: Install sccache (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $SCCACHE_VERSION = "0.5.3"
+          Invoke-WebRequest -OutFile sccache.tar.gz -Uri "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-pc-windows-msvc.tar.gz"
+          tar -xf sccache.tar.gz
+          Add-Content $env:GITHUB_PATH "$pwd\sccache-*"
+          
+      # Set up extensive caching
+      - name: Cache Cargo registry and sccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sccache
+            ~/Library/Caches/Mozilla.sccache
+            %LOCALAPPDATA%\Mozilla\sccache
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+            ${{ runner.os }}-cargo-
            
       # Set up Java JDK for build process
       - name: Set up JDK 11
@@ -31,6 +129,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '11'
+          cache: 'maven'  # Cache Maven dependencies
       
       # Prepare vendor directory structure
       - name: Create vendor directories (Unix)
@@ -57,10 +156,22 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install zstd
       
-      # Build crate (it will use the vendored files automatically)
+      # Build crate only if source code has changed
       - name: cargo build
-        run: cargo build --release --target ${{ matrix.target }} --features cli
+        if: steps.changes.outputs.src == 'true'
+        run: cargo build --release --target ${{ matrix.target }} --features cli --locked
+        
+      # Skip build if source hasn't changed (for documentation-only PRs)
+      - name: Skip build
+        if: steps.changes.outputs.src != 'true'
+        run: echo "Skipping build - no source changes detected"
 
-      # Run integration test (parse sample.pdf)
-      - name: Test end‑to‑end
-        run: cargo test --target ${{ matrix.target }}
+      # Run fast tests first
+      - name: Run unit tests
+        if: steps.changes.outputs.src == 'true'
+        run: cargo test --lib --bins --target ${{ matrix.target }} -- --nocapture
+
+      # Run integration tests separately
+      - name: Run integration tests
+        if: steps.changes.outputs.src == 'true'
+        run: cargo test --test="*" --target ${{ matrix.target }} -- --nocapture
