@@ -46,17 +46,22 @@ jobs:
       fail-fast: false         # don't cancel other OSes if one fails
       matrix:
         include:
-          - os: ubuntu-latest   ; target: x86_64-unknown-linux-gnu
-          - os: macos-14        ; target: aarch64-apple-darwin
-          - os: windows-latest  ; target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
-        with: {targets: ${{ matrix.target }}}
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2   # smarter than plain actions/cache
         with:
