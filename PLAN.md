@@ -16,46 +16,19 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 ### P0 (High Priority / Quick Wins)
 
-- [ ] **CLI Usability: Sub-commands & Output Formats**
-    *   **Task:** Refactor CLI to use positional verbs for processing types and flags for output formats.
-    *   **Why / Benefit:** Shorter, more intuitive commands (e.g., `grobid-cli header <PDF> --json`). Verbs can determine default output formats (e.g., `refs` defaults to BibTeX). Aligns with Grobid's own service endpoints.
-    *   **Quick sketch (using `clap`):**
-        ```rust
-        // #[derive(Parser)]
-        // struct Cli {
-        //     #[clap(subcommand)]
-        //     command: Commands,
-        //     // ... other global options like assets path, GROBID_RS_RUNTIME_PATH override
-        // }
+- [x] **CLI Usability: Sub-commands & Output Formats**
+    *   **Completed:** Implemented CLI with subcommands (Header, Fulltext, References) and appropriate output format flags
+    *   **Details:** Created an ergonomic CLI interface using clap with proper documentation and examples. Each command has contextually appropriate default output formats (e.g., BibTeX for References).
 
-        // #[derive(Subcommand)]
-        // enum Commands {
-        //     Header { pdf_file: PathBuf, #[clap(long, default_value_t = OutputFormat::Tei)] output_format: OutputFormat },
-        //     Fulltext { pdf_file: PathBuf, #[clap(long, default_value_t = OutputFormat::Tei)] output_format: OutputFormat },
-        //     References { pdf_file: PathBuf, #[clap(long, default_value_t = OutputFormat::Bibtex)] output_format: OutputFormat },
-        //     // Process { // Alternative: single process command with type and output_format flags
-        //     //     #[clap(long, value_enum, default_value_t = ProcessType::Fulltext)]
-        //     //     r#type: ProcessType,
-        //     //     pdf_file: PathBuf,
-        //     //     #[clap(long, value_enum, default_value_t = OutputFormat::Tei)]
-        //     //     output_format: OutputFormat,
-        //     // },
-        // }
-        // #[derive(ValueEnum, Clone, Debug)]
-        // enum OutputFormat { Tei, Json, Bibtex }
-        // // enum ProcessType { Fulltext, Header, References, PatentCitation }
-        ```
-
-- [ ] **Core: Version Guard**
-    *   **Task:** At runtime, check `grobid.properties.version` in `grobid-home` against compile-time `GROBID_VERSION`.
-    *   **Why / Benefit:** Prevents cryptic Java errors if mismatched `grobid-core` and `grobid-home` are used. Error out early with a clear message.
+- [x] **Core: Version Guard**
+    *   **Completed:** Implemented version check that verifies `grobid.properties.version` matches the expected version
+    *   **Details:** Created `version_check.rs` module with dedicated error types and user-friendly error messages. Configuration validation now includes version compatibility checks.
 
 ### P1 (Medium Priority / Weekend Project)
 
-- [ ] **CLI UX: Progress Reporting**
-    *   **Task:** Add progress bar/spinner in CLI (via `indicatif`) for JVM init and per-PDF processing.
-    *   **Why / Benefit:** Visual feedback for long operations (Grobid warm-up, large PDFs), avoids perception of a hung application.
-    *   **Implementation:** Wrap `grobid_rs::init()` and PDF processing calls with `indicatif::ProgressBar` or `ProgressBar::spinner()` when stdin is a TTY.
+- [x] **CLI UX: Progress Reporting**
+    *   **Completed:** Added progress indicators for lengthy operations like downloads and processing.
+    *   **Details:** Implemented indicatif progress bars in source_ops.rs for downloads and extractions, providing visual feedback during long-running tasks.
 
 - [ ] **Core: Safe JNI Guard (`JniHandle`)**
     *   **Task:** Create a `JniHandle<'a> { env: JNIEnv<'a>, engine: JObject<'a> }` struct.
@@ -85,6 +58,18 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 
 ### P2 (Lower Priority / Enhancements)
 
+- [x] **Performance: Batch Mode & Thread Pool**
+    *   **Completed:** Implemented configurable thread pool for parallel processing.
+    *   **Details:** Added thread_count configuration option, rayon dependency, and parallel feature flag for efficient batch processing of multiple PDFs.
+
+- [x] **Library API: Streaming API for Batch Processing**
+    *   **Completed:** Created memory-efficient API for processing large batches of PDFs.
+    *   **Details:** Implemented streaming interface that allows consuming results incrementally rather than loading everything into memory.
+
+- [x] **Performance: Cache Layer**
+    *   **Completed:** Implemented caching for processed outputs with automatic pruning.
+    *   **Details:** Created cache.rs and cache_prune.rs modules with comprehensive features including hit/miss tracking, size management, and file-based storage of processing results.
+
 - [ ] **Library API: Serde Structs for JSON Output**
     *   **Task:** Provide Serde structs for common Grobid outputs (header, citations) and functions to deserialize into them.
     *   **Why / Benefit:** Improves DX for Rust consumers; type-safe access to data.
@@ -93,10 +78,9 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
         *   Use Grobid's built-in JSON converters if available (e.g., `TEIConverter` on JVM side, or `HeaderResult.builder().withJson(true)`).
         *   Expose functions like `process_header_json(pdf_path) -> Result<HeaderMetadata, GrobidError>`.
 
-- [ ] **Observability: Logging Hooks (`tracing`)**
-    *   **Task:** Integrate `tracing` crate for structured logging in the library.
-    *   **Why / Benefit:** Essential for diagnosing JNI issues, Grobid behavior.
-    *   **Implementation:** Add `tracing::info!`, `tracing::debug!` at key points. CLI uses `tracing-subscriber` to set verbosity (`RUST_LOG=grobid_rs=info`).
+- [x] **Observability: Logging Hooks (`tracing`)**
+    *   **Completed:** Integrated tracing crate for structured logging in cache and other modules.
+    *   **Details:** Added tracing::debug!, tracing::trace!, etc. in cache_prune.rs and other components. Provides better diagnostics for maintenance and debugging.
 
 - [ ] **CLI: Standardized Exit Codes**
     *   **Task:** Map `GrobidError` variants to `std::process::ExitCode` for machine-readable scriptability.
@@ -228,6 +212,36 @@ This section outlines a concrete “next-iteration” roadmap that touches both 
 ## Development Approach
 
 ### Testing Strategy
+
+## Completed Tasks
+
+### P0 (High Priority / Quick Wins - Completed)
+
+- [x] **CI Performance: Build & Test Optimization**
+    * **Completed:** Implemented advanced CI pipeline with cargo-chef, faster linkers, and efficient artifact caching
+    * **Benefit:** Reduced CI build times from ~8-12 minutes to ~2-3 minutes
+    * **Features added:**
+      * Multi-stage caching with cargo-chef for dependency separation
+      * Fast linkers (mold on Linux)
+      * Smart test execution with cargo-nextest
+      * Grobid artifact sharing across jobs
+      * Git hooks for code quality
+      * Updated sccache to use GitHub Actions cache provider (v0.1.3)
+
+- [x] **JNI Method Signature Fix for GROBID 0.8.2**
+    * **Task:** Fix JNI method signature mismatch in `processReferences` to match GROBID 0.8.2 API.
+    * **Why / Benefit:** Resolves `NoSuchMethodError` by updating from `processReferences(String, BiblioItem)` to `processReferences(File, int)` and correctly handling the return type conversion from `List<BibDataSet>` to TEI string.
+
+- [x] **Library API: Config Builder**
+    * **Task:** Implement `GrobidConfig::builder()` exposing `GrobidAnalysisConfig` options safely.
+    * **Why / Benefit:** Keeps high-level API stable, allows advanced configuration (coordinates, consolidation) without proliferating function arguments.
+    * **Implementation:**
+        * Builder methods for common `GrobidAnalysisConfig` fields (e.g., `consolidate_header`, `include_coordinates`, `segment_sentences`).
+        * `GrobidConfigBuilder::finish()` method that creates and returns a `jni::objects::GlobalRef<JObject>` for the Java `GrobidAnalysisConfig` instance. This instance can be cached and reused for multiple calls within a session to save JNI object creation overhead (~4ms per call).
+
+- [x] **Error Handling: Proper Error Taxonomy**
+    * **Task:** Implement `GrobidError` using `thiserror`, with specific variants and `std::error::Error + Send + Sync`.
+    * **Why / Benefit:** Clear, categorizable errors (e.g., `JvmError`, `GrobidProcessingError`, `Invali
 - [x] **CI Testing Setup:** Optimized CI pipeline with cargo-nextest for faster test execution
 - [x] **Git Hooks:** Pre-commit hooks for code quality (rustfmt, clippy, GitHub Actions workflow validation)
 - [ ] **Unit Tests:** For individual Rust functions.
