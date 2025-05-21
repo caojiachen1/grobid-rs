@@ -7,6 +7,8 @@ This document explains how to set up git hooks to automatically run `rustfmt` an
 The grobid-rs repository provides pre-configured Git hooks in the `scripts/` directory:
 
 - `pre-commit.sh` - Automatically formats Rust code and runs clippy checks before each commit
+- `pre-commit-actionlint.sh` - Validates GitHub Actions workflow YAML files against schema
+- `pre-commit-runner.sh` - Runs all pre-commit hooks in sequence
 - `install-hooks.sh` - Installs the hooks into your local repository
 
 ### Quick Setup (Recommended)
@@ -18,7 +20,15 @@ Run the provided installation script from the repository root:
 ./scripts/install-hooks.sh
 ```
 
-This will automatically install all available hooks and make them executable.
+This will automatically install all available hooks and make them executable. The installation script configures a hook runner that will execute all hooks in sequence when you commit.
+
+## Available Hooks
+
+### Rust Code Formatting and Linting
+The `pre-commit.sh` hook automatically formats Rust code with `rustfmt` and runs `clippy` to check for common issues before committing.
+
+### GitHub Actions Workflow Validation
+The `pre-commit-actionlint.sh` hook validates GitHub Actions workflow YAML files against schema using [actionlint](https://github.com/rhysd/actionlint). This helps catch issues in workflow files before they're pushed to GitHub, saving time by preventing CI failures due to syntax errors or schema validation issues.
 
 ## Why Use Git Hooks?
 
@@ -26,6 +36,7 @@ Git hooks help automate quality assurance by running checks before git actions l
 
 - Ensuring code follows the project's formatting standards
 - Running clippy to catch common mistakes
+- Validating GitHub Actions workflow files against schema
 - Checking that tests pass before code is committed
 - Validating commit messages follow conventional format
 
@@ -189,12 +200,15 @@ For team projects, consider:
 If you encounter issues with hooks:
 
 1. Ensure you have the latest rustfmt installed: `rustup component add rustfmt`
-2. Check that the hook files have execute permissions: `chmod +x .git/hooks/pre-commit`
-3. Verify the path to executables in your hooks are correct for your system
-4. On Windows, ensure scripts use the correct shebang and line endings
-5. If auto-formatting isn't working, make sure you're not using the `--check` flag with `cargo fmt`
-6. Try reinstalling the hooks using the `scripts/install-hooks.sh` script
-7. Check the output of `git hook run pre-commit` for debugging information
+1. Check if rustfmt is installed: `rustup component add rustfmt`
+2. Check if actionlint is installed: `actionlint --version` or install it from [github.com/rhysd/actionlint](https://github.com/rhysd/actionlint#installation)
+3. Check that the hook files have execute permissions: `chmod +x .git/hooks/pre-commit`
+4. Verify the path to executables in your hooks are correct for your system
+5. On Windows, ensure scripts use the correct shebang and line endings
+6. If auto-formatting isn't working, make sure you're not using the `--check` flag with `cargo fmt`
+7. Try reinstalling the hooks using the `scripts/install-hooks.sh` script
+8. Check the output of `git hook run pre-commit` for debugging information
+9. Run individual hooks manually for testing: `.git/hooks/pre-commit.sh` or `.git/hooks/pre-commit-actionlint.sh`
 
 ## Alternative: Check-Only Pre-commit Hook
 

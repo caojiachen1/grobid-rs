@@ -20,18 +20,27 @@ fi
 # Create hooks directory if it doesn't exist
 mkdir -p .git/hooks
 
-# Copy the pre-commit hook
-echo -e "${BLUE}Installing pre-commit hook...${NC}"
-cp scripts/pre-commit.sh .git/hooks/pre-commit
+# Copy the individual hooks to hooks directory
+echo -e "${BLUE}Installing component hooks...${NC}"
+cp scripts/pre-commit.sh .git/hooks/pre-commit.sh
+cp scripts/pre-commit-actionlint.sh .git/hooks/pre-commit-actionlint.sh
 
-# Make hook executable
+# Install the pre-commit runner as the main pre-commit hook
+echo -e "${BLUE}Installing pre-commit runner...${NC}"
+cp scripts/pre-commit-runner.sh .git/hooks/pre-commit
+
+# Make hooks executable
 chmod +x .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit.sh
+chmod +x .git/hooks/pre-commit-actionlint.sh
 
 # Verify installation
-if [ -x .git/hooks/pre-commit ]; then
+if [ -x .git/hooks/pre-commit ] && [ -x .git/hooks/pre-commit.sh ] && [ -x .git/hooks/pre-commit-actionlint.sh ]; then
     echo -e "${GREEN}✅ Git hooks installed successfully!${NC}"
     echo -e "${BLUE}The following hooks are now active:${NC}"
-    echo -e "  ${GREEN}• pre-commit${NC} - Formats Rust code and runs clippy before commits"
+    echo -e "  ${GREEN}• pre-commit${NC} - Runs all hooks in sequence"
+    echo -e "    ${GREEN}↳ Rust formatting${NC} - Formats Rust code and runs clippy"
+    echo -e "    ${GREEN}↳ Actions linting${NC} - Validates GitHub Actions workflow YAML files"
     echo -e "${YELLOW}Note: You can bypass hooks with git commit --no-verify if needed${NC}"
 else
     echo -e "${RED}❌ Error: Failed to install git hooks.${NC}"
