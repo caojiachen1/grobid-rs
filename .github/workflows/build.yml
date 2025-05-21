@@ -55,6 +55,100 @@ jobs:
           - os: windows-latest # win‑x64
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Filter changed files
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'build.rs'
+              - 'build_modules/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'vendor/**'
+
+      # Install Rust toolchain
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          
+      # Set up cargo cache
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+            ${{ runner.os }}-cargo-
+           
+      # Set up Java JDK for build process
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+          cache: 'maven'
+      
+      # Prepare vendor directory structure
+      - name: Create vendor directories (Unix)
+        if: ${{ runner.os != 'Windows' }}
+        run: mkdir -p vendor/grobid
+      
+      - name: Create vendor directories (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path vendor)) { New-Item -Path vendor -ItemType Directory }
+          if (-not (Test-Path vendor/grobid)) { New-Item -Path vendor/grobid -ItemType Directory }
+           
+      # Install zstd (needed for decompression)
+      - name: Install zstd (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        run: brew install zstd
+        
+      - name: Install zstd (Ubuntu)
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt-get install -y zstd
+        
+      - name: Install zstd (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $ZSTD_VERSION = "1.5.5"
+          $ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}/zstd-v${ZSTD_VERSION}-win64.zip"
+          Invoke-WebRequest -Uri $ZSTD_URL -OutFile zstd.zip
+          Expand-Archive -Path zstd.zip -DestinationPath zstd-extract
+          $zstdPath = "$PWD\zstd-extract\zstd-v${ZSTD_VERSION}-win64"
+          Add-Content $env:GITHUB_PATH "$zstdPath"
+          echo "Installed zstd to $zstdPath"
+      
+      # Build crate only if source code has changed
+      - name: cargo build
+        if: ${{ steps.changes.outputs.src == 'true' }}
+        run: cargo build --release --target ${{ matrix.target }} --features cli --locked
+        
+      # Skip build if source hasn't changed (for documentation-only PRs)
+      - name: Skip build
+        if: ${{ steps.changes.outputs.src != 'true' }}
+        run: echo "Skipping build - no source changes detected"
+
+      # Run fast tests first
+      - name: Run unit tests
+        if: ${{ steps.changes.outputs.src == 'true' }}
+        run: cargo test --lib --bins --target ${{ matrix.target }} -- --nocapture
+
+      # Run integration tests separately
+      - name: Run integration tests
+        if: ${{ steps.changes.outputs.src == 'true' }}
+        run: cargo test --test="*" --target ${{ matrix.target }} -- --nocapture
     
   # Build job for PRs (Ubuntu only)
   build_pr:
