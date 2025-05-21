@@ -24,43 +24,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      # Cache JRE runtime by platform
-      - name: Cache JRE runtime
-        id: jre-cache
-        uses: actions/cache@v4
+          
+      # Set up Java JDK
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
         with:
-          path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
-          key: jre-${{ runner.os }}-${{ matrix.target }}-0.8.2
-
-      # Prepare directory for JRE
-      - name: Prepare JRE directory
-        if: steps.jre-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          # Clean up any existing directory
-          rm -rf vendor/jre || true
-          mkdir -p vendor
-
-      # Build minimal JRE via jlink only if not in cache
-      - name: Build jlink image
-        if: steps.jre-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          # Build a fresh JRE
-          jlink \
-            --add-modules java.base,java.logging,java.xml,jdk.unsupported \
-            --strip-debug --no-header-files --no-man-pages --compress=2 \
-            --output vendor/jre/${{ matrix.os }}
+          distribution: 'temurin'
+          java-version: '11'
+          
+      # Create vendor directory
+      - name: Create vendor directories
+        run: mkdir -p vendor/grobid
 
       # Build crate (it will use the vendored files automatically)
       - name: cargo build
-        env:
-          JAVA_HOME: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
         run: cargo build --release --target ${{ matrix.target }} --features cli
 
       # Run integration test (parse sample.pdf)
       - name: Test end‑to‑end
-        env:
-          JAVA_HOME: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
         run: cargo test --target ${{ matrix.target }}
