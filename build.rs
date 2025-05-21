@@ -4,10 +4,10 @@ use anyhow::{Context, Result};
 use build_modules::{
     build_ops::build_and_stage_grobid,
     common::{
-        print_cargo_info, print_cargo_warning, FORCE_GROBID_REBUILD_ENV_VAR, GROBID_DIR_NAME_PREFIX,
-        GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX, GROBID_ONEJAR_NAME_SUFFIX,
-        GROBID_RS_ASSETS_PATH_ENV_VAR, GROBID_VERSION, JLINK_RUNTIME_SUBDIR_NAME,
-        JRE_SUCCESS_MARKER_FILE,
+        print_cargo_info, print_cargo_warning, FORCE_GROBID_REBUILD_ENV_VAR,
+        GROBID_DIR_NAME_PREFIX, GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX,
+        GROBID_ONEJAR_NAME_SUFFIX, GROBID_RS_ASSETS_PATH_ENV_VAR, GROBID_VERSION,
+        JLINK_RUNTIME_SUBDIR_NAME, JRE_SUCCESS_MARKER_FILE,
     },
     java_env::locate_java_home,
     jni_config::setup_jni_linkage,

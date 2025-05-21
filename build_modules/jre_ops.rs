@@ -1,5 +1,5 @@
 use crate::build_modules::common::{
-    bail, fs, print_cargo_info, print_cargo_warning, Context, File, Path, PathBuf, Result, JAKARTA_JLINK_MODULES,
+    bail, fs, print_cargo_info, Context, File, Path, PathBuf, Result, JAKARTA_JLINK_MODULES,
     JLINK_RUNTIME_SUBDIR_NAME, JRE_SUCCESS_MARKER_FILE,
 };
 use crate::build_modules::fingerprint;

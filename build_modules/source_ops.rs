@@ -1,9 +1,9 @@
 use crate::build_modules::common::{
-    bail, env, fs, io, print_cargo_info, print_cargo_warning, Context, Client, Digest, 
-    Duration, EXTRACTION_SUCCESS_MARKER_FILE, File, GROBID_DIR_NAME_PREFIX, GROBID_DOWNLOAD_URL_PREFIX,
-    GROBID_SOURCE_SUBDIR_NAME, GROBID_VERSION, GROBID_ZIP_SHA256, IndexedParallelIterator, 
-    IntoParallelIterator, OpenOptions, ParallelIterator, Path, PathBuf, ProgressBar, ProgressState, 
-    ProgressStyle, Read, Result, Seek, SeekFrom, StatusCode, Write, ZipArchive, header
+    bail, fs, header, io, print_cargo_info, print_cargo_warning, Client, Context, Duration, File,
+    IntoParallelIterator, OpenOptions, ParallelIterator, Path, PathBuf, ProgressBar, ProgressState,
+    ProgressStyle, Read, Result, Seek, SeekFrom, StatusCode, Write, ZipArchive,
+    EXTRACTION_SUCCESS_MARKER_FILE, GROBID_DIR_NAME_PREFIX, GROBID_DOWNLOAD_URL_PREFIX,
+    GROBID_SOURCE_SUBDIR_NAME, GROBID_VERSION, GROBID_ZIP_SHA256,
 };
 use crate::build_modules::utils::verify_sha256;
 use anyhow::anyhow;
@@ -29,7 +29,7 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
 
     // HEAD to get size & range support
     let head_result = client.head(url).send();
-    
+
     // Check if HEAD request was successful
     let (len, ranges_ok) = match head_result {
         Ok(head) => {
@@ -40,14 +40,14 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
                 ));
                 return download_file(url, to);
             }
-            
+
             // Try to get content length
             let content_length = head
                 .headers()
                 .get(header::CONTENT_LENGTH)
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok());
-                
+
             if content_length.is_none() {
                 print_cargo_info(&format!(
                     "Content-Length header missing from {}. Using fallback download method.",
@@ -55,16 +55,21 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
                 ));
                 return download_file(url, to);
             }
-            
+
             let ranges_supported = head.headers().get(header::ACCEPT_RANGES).is_some();
             (content_length.unwrap(), ranges_supported)
-        },
+        }
         Err(e) => {
             print_cargo_info(&format!(
                 "HEAD request to {} failed: {}. Using fallback download method.",
                 url, e
             ));
-            return download_file(url, to{} ({} MiB, ranges {})",
+            return download_file(url, to);
+        }
+    };
+
+    print_cargo_info(&format!(
+        "Parallel download: {} ({} MiB, ranges {})",
         url,
         len / 1_048_576,
         if ranges_ok { "YES" } else { "NO" }
@@ -91,11 +96,11 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
         )
         .unwrap(),
     );
-    pb.set_message("Downloading Grobid ZIP ");
+    pb.set_message("Downloading Grobid ZIP");
 
     if !ranges_ok || len < 50 * 1024 * 1024 {
         // fallback single stream
-        let mut resp = client.get(url).send().context("stream GET ")?;
+        let mut resp = client.get(url).send().context("stream GET")?;
         let mut writer = pb.wrap_write(file);
         std::io::copy(&mut resp, &mut writer)?;
     } else {
@@ -144,7 +149,7 @@ fn parallel_download(url: &str, to: &Path, expect_sha256: &str) -> Result<()> {
 
     // Verify checksum
     if verify_sha256(to, expect_sha256).is_err() {
-        bail!("SHA-256 mismatch after download ");
+        bail!("SHA-256 mismatch after download");
     }
     Ok(())
 }
@@ -164,7 +169,7 @@ fn download_file(url: &str, to: &Path) -> Result<()> {
         .connect_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(1800)) // 30 minutes overall timeout for large files
         .build()
-        .context("Failed to build reqwest client ")?;
+        .context("Failed to build reqwest client")?;
 
     let response = client
         .get(url)
@@ -188,12 +193,14 @@ fn download_file(url: &str, to: &Path) -> Result<()> {
         .unwrap_or(0);
 
     let pb = ProgressBar::new(total_size);
-    pb.set_style(ProgressStyle::with_template(
-        "{msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})"
-    )
-    .unwrap_or_else(|_| ProgressStyle::default_bar())
-    .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| write!(w, "{:?}", state.eta()).unwrap())
-    .progress_chars("==>"));
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})"
+        )
+        .unwrap_or_else(|_| ProgressStyle::default_bar())
+        .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| write!(w, "{:?}", state.eta()).unwrap())
+        .progress_chars("==>")
+    );
     let download_file_name = Path::new(url)
         .file_name()
         .unwrap_or_default()
@@ -350,70 +357,53 @@ pub fn ensure_grobid_source_extracted(assets_dir: &Path) -> Result<PathBuf> {
         return Ok(root);
     }
 
-    if !success_marker.exists() {
-        print_cargo_info(&format!(
-            "Grobid source not found or extraction incomplete at {}. Will download and extract.",
-            grobid_source_checkout_dir.display()
-        ));
+    print_cargo_info(&format!(
+        "Grobid source not found or extraction incomplete at {}. Will download and extract.",
+        grobid_source_checkout_dir.display()
+    ));
 
-        if !grobid_source_checkout_dir.exists() {
-            fs::create_dir_all(&grobid_source_checkout_dir).with_context(|| {
-                format!(
-                    "Failed to create Grobid source directory: {}",
-                    grobid_source_checkout_dir.display()
-                )
-            })?;
-        }
-
-        // Download the GROBID source archive
-        let zip_file_name = format!("{}.zip ", GROBID_VERSION);
-        let grobid_zip_path = assets_dir.join(&zip_file_name);
-        let download_url = format!("{}{}.zip ", GROBID_DOWNLOAD_URL_PREFIX, GROBID_VERSION);
-
-        print_cargo_info(&format!(
-            "[Debug source_ops] Checking for ZIP: {}. Exists? {}",
-            grobid_zip_path.display(),
-            grobid_zip_path.exists()
-        ));
-
-        // Use optimized parallel download which handles checksums and resuming
-        parallel_download(&download_url, &grobid_zip_path, GROBID_ZIP_SHA256)?;
-        extract_zip(&grobid_zip_path, &grobid_source_checkout_dir)?;
-
-        // Create success marker file
-        fs::File::create(&success_marker).with_context(|| {
+    if !grobid_source_checkout_dir.exists() {
+        fs::create_dir_all(&grobid_source_checkout_dir).with_context(|| {
             format!(
-                "Failed to create success marker file: {}",
-                success_marker.display()
+                "Failed to create Grobid source directory: {}",
+                grobid_source_checkout_dir.display()
             )
         })?;
-        // Determine root: nested or checkout dir
-        let root = if grobid_source_checkout_dir
-            .join(format!("grobid-{}", GROBID_VERSION))
-            .exists()
-        {
-            grobid_source_checkout_dir
-                .join(format!("grobid-{}", GROBID_VERSION))
-                .clone()
-        } else {
-            grobid_source_checkout_dir.clone()
-        };
-        Ok(root)
-    } else {
-        print_cargo_info(&format!(
-            "Found existing successfully extracted Grobid source at: {}",
-            grobid_source_checkout_dir.display()
-        ));
-        // The actual Grobid project root will be one level deeper due to GitHub zip structure
-        let actual_grobid_root =
-            grobid_source_checkout_dir.join(format!("grobid-{}", GROBID_VERSION));
-        if !actual_grobid_root.exists() {
-            let msg = format!(
-                "Extracted Grobid source, but the expected project root {} does not exist",
-                actual_grobid_root.display()
-            );
-            bail!("{}", msg);
-        }
-        Ok(actual_grobid_root)
     }
+
+    // Download the GROBID source archive
+    let zip_file_name = format!("{}.zip", GROBID_VERSION);
+    let grobid_zip_path = assets_dir.join(&zip_file_name);
+    let download_url = format!("{}{}.zip", GROBID_DOWNLOAD_URL_PREFIX, GROBID_VERSION);
+
+    print_cargo_info(&format!(
+        "[Debug source_ops] Checking for ZIP: {}. Exists? {}",
+        grobid_zip_path.display(),
+        grobid_zip_path.exists()
+    ));
+
+    // Use optimized parallel download which handles checksums and resuming
+    parallel_download(&download_url, &grobid_zip_path, GROBID_ZIP_SHA256)?;
+    extract_zip(&grobid_zip_path, &grobid_source_checkout_dir)?;
+
+    // Create success marker file
+    fs::File::create(&success_marker).with_context(|| {
+        format!(
+            "Failed to create success marker file: {}",
+            success_marker.display()
+        )
+    })?;
+    // Determine root: nested or checkout dir
+    let expected_project_root = format!("grobid-{}", GROBID_VERSION);
+    let root = if grobid_source_checkout_dir
+        .join(&expected_project_root)
+        .exists()
+    {
+        grobid_source_checkout_dir
+            .join(expected_project_root)
+            .clone()
+    } else {
+        grobid_source_checkout_dir.clone()
+    };
+    Ok(root)
 }

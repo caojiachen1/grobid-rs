@@ -72,8 +72,8 @@ pub fn print_cargo_warning(message: &str) {
 }
 
 /// Print an info message during the build process
-/// 
-/// This function prints a message prefixed with "cargo:info=" which will be 
+///
+/// This function prints a message prefixed with "cargo:info=" which will be
 /// visible in build output but won't be treated as a warning.
 pub fn print_cargo_info(message: &str) {
     println!("{CARGO_INFO_PREFIX}{message}");

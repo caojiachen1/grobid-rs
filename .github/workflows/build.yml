@@ -190,20 +190,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Speed-up incremental builds with sccache + GHA backend
-      - uses: mozilla-actions/sccache-action@v0.0.4
+      - uses: mozilla-actions/sccache-action@v0.1.3
+        with:
+          cache: gha
         env:
-          SCCACHE_GHA_ENABLED: "true"
+          SCCACHE_GHA_CACHE_SIZE: "1G"
+          SCCACHE_IDLE_TIMEOUT: "0"
         if: runner.os != 'Windows'
 
       # Use a Windows-optimized configuration for sccache on Windows
       - name: Setup sccache (Windows)
         if: runner.os == 'Windows'
-        uses: mozilla-actions/sccache-action@v0.0.4
+        uses: mozilla-actions/sccache-action@v0.1.3
         with:
-          version: "v0.4.0"
+          cache: gha
         env:
-          SCCACHE_GHA_ENABLED: "true"
-          SCCACHE_CACHE_SIZE: "1G"
+          SCCACHE_GHA_CACHE_SIZE: "1G"
           SCCACHE_IDLE_TIMEOUT: "0"
 
       # Install faster linkers
@@ -222,10 +224,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install zig
 
-      # Use Zig's zld linker on macOS for faster builds
-      - name: Use zld linker (macOS)
+      # Use standard Apple linker on macOS (already multithreaded)
+      - name: Configure macOS build
         if: runner.os == 'macOS'
-        run: echo "RUSTFLAGS=-C linker=$(which zig) -C link-arg=-fmacosx-version-min=11.0 -Zshare-generics=y" >> $GITHUB_ENV
+        run: echo "RUSTFLAGS=-Zshare-generics=y" >> $GITHUB_ENV
 
       # Use lld linker for Windows to speed up builds
       - name: Use lld linker (Windows)
@@ -352,6 +354,12 @@ jobs:
         run: |
           cargo +nightly nextest run --release -j $env:NUMBER_OF_PROCESSORS --test '*' --no-fail-fast --status-level=all --failure-output=immediate-final
           exit 0
+          
+      # Show sccache stats at the end of the job
+      - name: sccache stats
+        if: env.SCCACHE_DIR != ''  # only if the server actually started
+        shell: bash
+        run: sccache --show-stats || true  # don't fail the job
 
       # Upload build artifacts
       - name: Upload binary artifacts

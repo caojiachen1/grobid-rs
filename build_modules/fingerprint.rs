@@ -2,7 +2,7 @@
 //! input that should trigger a rebuild (Gradle sources, JDK, build.rs).
 
 use crate::build_modules::common::{
-    env, fs, io, print_cargo_info, print_cargo_warning, Context, Digest, File, Path, PathBuf, Result, Sha256,
+    env, fs, io, print_cargo_info, Context, Digest, File, Path, PathBuf, Result, Sha256,
     GROBID_VERSION, GROBID_ZIP_SHA256, JAKARTA_JLINK_MODULES,
 };
 use serde::{Deserialize, Serialize};

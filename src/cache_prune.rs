@@ -16,7 +16,7 @@ pub const CACHE_AUTO_PRUNE_ENV: &str = "GROBID_RS_CACHE_AUTO_PRUNE";
 
 /// Default check interval for background GC (1 hour)
 #[allow(dead_code)]
-pub const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(60 * 60);
+pub const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(3600); // 1 hour
 
 /// Cache file info used for pruning decisions
 struct CacheFileInfo {
@@ -75,6 +75,7 @@ pub fn get_cache_size() -> Result<u64, GrobidError> {
         return Ok(0);
     }
 
+    #[allow(clippy::redundant_closure)]
     for entry in fs::read_dir(&cache_dir).map_err(GrobidError::Io)? {
         let entry = entry.map_err(GrobidError::Io)?;
         let metadata = entry.metadata().map_err(GrobidError::Io)?;

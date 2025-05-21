@@ -7,6 +7,12 @@ use std::{
 };
 
 mod cache;
+#[allow(
+    dead_code,
+    clippy::redundant_closure,
+    clippy::match_like_matches_macro,
+    clippy::needless_return
+)]
 mod cache_prune;
 mod config;
 mod errors;

@@ -1,9 +1,9 @@
 use crate::build_modules::common::{
-    bail, env, print_cargo_info, print_cargo_warning, Path, PathBuf, Result, CARGO_LINK_LIB_DYLIB_PREFIX,
-    CARGO_LINK_LIB_STATIC_PREFIX, CARGO_LINK_SEARCH_NATIVE_PREFIX, CARGO_RERUN_IF_CHANGED_ENV_VAR,
-    CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR, FORCE_GROBID_REBUILD_ENV_VAR, GROBID_HOME_DIR_NAME,
-    GROBID_JAR_NAME_PREFIX, GROBID_ONEJAR_NAME_SUFFIX, GROBID_RS_ASSETS_PATH_ENV_VAR,
-    GROBID_VERSION, JAVA_HOME_ENV_VAR,
+    bail, env, print_cargo_info, print_cargo_warning, Path, PathBuf, Result,
+    CARGO_LINK_LIB_DYLIB_PREFIX, CARGO_LINK_LIB_STATIC_PREFIX, CARGO_LINK_SEARCH_NATIVE_PREFIX,
+    CARGO_RERUN_IF_CHANGED_ENV_VAR, CARGO_RERUN_IF_ENV_CHANGED_ENV_VAR,
+    FORCE_GROBID_REBUILD_ENV_VAR, GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX,
+    GROBID_ONEJAR_NAME_SUFFIX, GROBID_RS_ASSETS_PATH_ENV_VAR, GROBID_VERSION, JAVA_HOME_ENV_VAR,
 };
 
 #[allow(clippy::too_many_lines)]
@@ -64,7 +64,9 @@ pub fn setup_jni_linkage(
             );
         }
     } else {
-        print_cargo_warning("JNI include directory not found. This might be an issue if compiling JNI C code.");
+        print_cargo_warning(
+            "JNI include directory not found. This might be an issue if compiling JNI C code.",
+        );
     }
 
     // --- Dynamic Library Linking ---

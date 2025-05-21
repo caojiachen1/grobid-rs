@@ -1,5 +1,5 @@
 use crate::build_modules::common::{
-    bail, copy_dir_contents, fs, print_cargo_info, print_cargo_warning, Context, DirCopyOptions, File, FsExtraError,
+    bail, copy_dir_contents, fs, print_cargo_info, Context, DirCopyOptions, File, FsExtraError,
     Path, Result, BUILD_SUCCESS_MARKER_FILE, GROBID_HOME_DIR_NAME, GROBID_JAR_NAME_PREFIX,
     GROBID_ONEJAR_NAME_SUFFIX, GROBID_RELEASE_TAG, GROBID_VERSION,
 };
