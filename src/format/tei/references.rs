@@ -287,7 +287,8 @@ impl SectionParser<Vec<Reference>> for ReferencesParser {
         let name = element.name();
         let tag_str = String::from_utf8_lossy(name.as_ref());
         let tag = strip_namespace(&tag_str);
-        tag == "listBibl" || tag == "back"
+        // Grobid outputs <listbibl> (lowercase b), but some parsers expect <listBibl>
+        tag.eq_ignore_ascii_case("listbibl") || tag == "back"
     }
 
     fn section_name(&self) -> &'static str {
@@ -335,7 +336,7 @@ impl SectionParser<Vec<Reference>> for ReferencesParser {
                     })?;
                     let tag = strip_namespace(&decoded_tag);
 
-                    if (tag == "listBibl" || tag == "back") && depth < 0 {
+                    if (tag.eq_ignore_ascii_case("listbibl") || tag == "back") && depth < 0 {
                         // We've reached the end of the references section
                         break;
                     }
