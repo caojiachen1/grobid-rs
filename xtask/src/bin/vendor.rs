@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 // Constants from build_modules/common.rs
-const GROBID_VERSION: &str = "0.8.2";
+const GROBID_VERSION: &str = "0.9.1";
 const GROBID_HOME_DIR_NAME: &str = "grobid-home";
 const GROBID_JAR_NAME_PREFIX: &str = "grobid-core";
 const GROBID_ONEJAR_NAME_SUFFIX: &str = "-onejar.jar";

@@ -29,15 +29,25 @@ grobid:
     #service: "glutton"
     glutton:
       #url: "https://cloud.science-miner.com/glutton"
-      url: "http://localhost:8080" 
+      url: "http://localhost:8080"
+      timeoutSec: 60
     crossref:
-      mailto: 
-      # to use crossref web API, you need normally to use it politely and to indicate an email address here, e.g. 
-      #mailto: "toto@titi.tutu"
+      mailto:
+      # NOTE! To use the Crossref web API, you need normally to use it politely
+      # and to indicate an email address here, e.g. mailto: "toto@titi.tutu"
       token:
       # to use Crossref metadata plus service (available by subscription)
       #token: "yourmysteriouscrossrefmetadataplusauthorizationtokentobeputhere"
-
+      timeoutSec: 60
+      # Minimum delay between consecutive CrossRef API requests (in milliseconds).
+      # Default: auto-computed from API tier (Plus=7ms/150req/s, Polite=100ms/10req/s, Public=200ms/5req/s).
+      # Set to a positive value to override the auto-computed rate limit.
+      #minRequestIntervalMs: 50
+      # Timeout for CrossRef API calls (in seconds) - USE with CARE!
+      # Whether to post-validate CrossRef results against the source metadata.
+      # Glutton always skips post-validation (it handles validation internally).
+      # For CrossRef, set to false to disable post-validation.
+      postValidation: true
   proxy:
     # proxy to be used when doing external call to the consolidation service
     host: 
@@ -48,16 +58,18 @@ grobid:
   corsAllowedMethods: "OPTIONS,GET,PUT,POST,DELETE,HEAD"
   corsAllowedHeaders: "X-Requested-With,Content-Type,Accept,Origin"
 
-  # the actual implementation for language recognition to be used
+  # the actual implementation for language recognition to be used (Cybozu or Lingua)
   languageDetectorFactory: "org.grobid.core.lang.impl.CybozuLanguageDetectorFactory"
+  #languageDetectorFactory: "org.grobid.core.lang.impl.LinguaLanguageDetectorFactory"
 
-  # the actual implementation for optional sentence segmentation to be used (PragmaticSegmenter or OpenNLP)
+  # the actual implementation for optional sentence segmentation to be used (PragmaticSegmenter, OpenNLP or BlingFire)
   #sentenceDetectorFactory: "org.grobid.core.lang.impl.PragmaticSentenceDetectorFactory"
   sentenceDetectorFactory: "org.grobid.core.lang.impl.OpenNLPSentenceDetectorFactory"
+  #sentenceDetectorFactory: "org.grobid.core.lang.impl.BlingFireSentenceDetectorFactory"
   
   # maximum concurrency allowed to GROBID server for processing parallel requests - change it according to your CPU/GPU capacities
   # for a production server running only GROBID, set the value slightly above the available number of threads of the server
-  # to get best performance and security
+  # to get the best performance and security
   concurrency: 10
   # when the pool is full, for queries waiting for the availability of a Grobid engine, this is the maximum time wait to try 
   # to get an engine (in seconds) - normally never change it

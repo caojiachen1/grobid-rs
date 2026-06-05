@@ -149,13 +149,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let assets_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("grobid_assets");
     
     // Download and extract Grobid if needed
-    let grobid_dir = download_and_extract_grobid(&assets_dir, "0.8.2")?;
+    let grobid_dir = download_and_extract_grobid(&assets_dir, "0.9.1")?;
     
     // Create custom JRE with jlink
     let jre_dir = create_jlink_runtime(&grobid_dir)?;
     
     // Set environment variables for the main Rust code
-    println!("cargo:rustc-env=GROBID_JAR_PATH={}", grobid_dir.join("grobid-core-0.8.2-onejar.jar").display());
+    println!("cargo:rustc-env=GROBID_JAR_PATH={}", grobid_dir.join("grobid-core-0.9.1-onejar.jar").display());
     println!("cargo:rustc-env=GROBID_HOME_PATH={}", grobid_dir.join("grobid-home").display());
     println!("cargo:rustc-env=JLINK_RUNTIME_PATH={}", jre_dir.display());
     

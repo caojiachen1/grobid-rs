@@ -27,7 +27,7 @@ Our workflow uses the following pattern:
 
 ```yaml
 env:
-  GROBID_VERSION: 0.8.2               # keep one source of truth
+  GROBID_VERSION: 0.9.1               # keep one source of truth
   GROBID_ZIP: grobid-${{ env.GROBID_VERSION }}-onejar.zip
   GROBID_CACHE_DIR: ${{ github.workspace }}/.grobid-cache
 
@@ -66,7 +66,7 @@ env:
 
 ## How It Works
 
-1. **Restore step** tries to untar the cache named `grobid-0.8.2-zip`.
+1. **Restore step** tries to untar the cache named `grobid-0.9.1-zip`.
    If it exists and is fresh, the ZIP appears instantly (from GitHub's CDN).
 2. **Download step** runs only on a cache miss, fetching the ZIP once from GitHub Releases (or any mirror).
 3. On job completion the same cache key is uploaded automatically, so the next run (even on another branch) will hit the cache.

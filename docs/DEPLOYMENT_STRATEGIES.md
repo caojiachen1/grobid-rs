@@ -66,7 +66,7 @@ let tei = grobid.process_header(Path::new("paper.pdf"))?;
 This approach runs the official Grobid Docker image or JAR alongside your Rust service.
 
 **Implementation:**
-1. Pull and run the Docker image: `grobid/grobid:0.8.2`
+1. Pull and run the Docker image: `grobid/grobid:0.9.1`
 2. Connect to `http://localhost:8070/api/...` from your Rust application
 3. Use a thin HTTP client instead of JNI for processing
 
@@ -158,7 +158,7 @@ grobid-cli header paper.pdf
 grobid-cli --remote http://srv:8070 header paper.pdf
 
 # Start and manage Docker container
-grobid-cli --docker-image grobid/grobid:0.8.2 header paper.pdf
+grobid-cli --docker-image grobid/grobid:0.9.1 header paper.pdf
 
 # Run as a daemon service
 grobid-cli daemon --listen :8070

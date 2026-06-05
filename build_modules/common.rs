@@ -19,8 +19,8 @@ pub use sha2::{Digest, Sha256};
 pub use zip::ZipArchive;
 
 // ----------- Grobid Configuration -----------
-pub const GROBID_VERSION: &str = "0.8.2";
-pub const GROBID_RELEASE_TAG: &str = "0.8.2"; // Used for constructing onejar name
+pub const GROBID_VERSION: &str = "0.9.1";
+pub const GROBID_RELEASE_TAG: &str = "0.9.1"; // Used for constructing onejar name
 pub const GROBID_DOWNLOAD_URL_PREFIX: &str =
     "https://github.com/kermitt2/grobid/archive/refs/tags/";
 pub const GROBID_ZIP_SHA256: &str =

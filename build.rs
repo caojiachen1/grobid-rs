@@ -42,9 +42,14 @@ fn check_for_vendored_files() -> Option<PathBuf> {
     );
     let jar_path = grobid_dir.join(&jar_name);
     let jar_zst_path = grobid_dir.join(format!("{}.zst", &jar_name));
+    let jar_zst_aa_path = grobid_dir.join(format!("{}.zst.aa", &jar_name));
     let grobid_home_path = grobid_dir.join(GROBID_HOME_DIR_NAME);
 
-    if (jar_path.exists() || jar_zst_path.exists()) && grobid_home_path.exists() && jre_dir.exists()
+    let jar_ok = jar_path.exists()
+        || jar_zst_path.exists()
+        || (jar_zst_aa_path.exists() && grobid_dir.join(format!("{}.zst.ab", &jar_name)).exists());
+
+    if jar_ok && grobid_home_path.exists() && jre_dir.exists()
     {
         print_cargo_info("Found vendored Grobid files");
         return Some(vendor_dir);
@@ -84,7 +89,7 @@ fn use_vendored_files(vendor_dir: &Path, deployment_dir: &Path) -> Result<()> {
             )
         })?;
     } else {
-        // Check for compressed version
+        // Check for single compressed file (.zst)
         let compressed_jar_path = vendor_grobid_dir.join(format!("{}.zst", jar_name));
         if compressed_jar_path.exists() {
             print_cargo_info(&format!(
@@ -100,9 +105,32 @@ fn use_vendored_files(vendor_dir: &Path, deployment_dir: &Path) -> Result<()> {
                 )
             })?;
         } else {
-            return Err(anyhow::anyhow!(
-                "Neither JAR file nor compressed JAR file found at expected locations"
-            ));
+            // Check for split compressed files (.zst.aa / .zst.ab) — each <100 MB for GitHub
+            let aa_path = vendor_grobid_dir.join(format!("{}.zst.aa", jar_name));
+            let ab_path = vendor_grobid_dir.join(format!("{}.zst.ab", jar_name));
+            if aa_path.exists() && ab_path.exists() {
+                print_cargo_info(&format!(
+                    "Merging split compressed JAR {} + {} to {}",
+                    aa_path.display(),
+                    ab_path.display(),
+                    target_jar_path.display()
+                ));
+                // Merge split files into a temporary .zst, then decompress
+                let temp_zst = vendor_grobid_dir.join(format!("{}.zst.merged", jar_name));
+                let mut merged = File::create(&temp_zst)?;
+                io::copy(&mut File::open(&aa_path)?, &mut merged)?;
+                io::copy(&mut File::open(&ab_path)?, &mut merged)?;
+                drop(merged);
+
+                decompress_zstd_file(&temp_zst, &target_jar_path)?;
+
+                // Clean up temp file
+                fs::remove_file(&temp_zst)?;
+            } else {
+                return Err(anyhow::anyhow!(
+                    "JAR file, .zst, or split .zst.aa/.ab files not found at expected locations"
+                ));
+            }
         }
     }
     // Process any other compressed files in grobid-home

@@ -15,32 +15,32 @@ pub fn setup_jni_linkage(
     print_cargo_info("Configuring JNI linkage...");
 
     // --- JNI Library Path ---
-    let jni_lib_path_from_jlink = jlink_runtime_path.join("lib/server"); // For jlinked runtime
-    let jni_lib_path_from_jdk = java_home_path.join("lib/server"); // Fallback for full JDK
-
-    let jni_lib_path = if jni_lib_path_from_jlink.exists()
-        && jni_lib_path_from_jlink.join("libjvm.dylib").exists()
-        || jni_lib_path_from_jlink.join("libjvm.so").exists()
-        || jni_lib_path_from_jlink.join("jvm.dll").exists()
-    {
-        print_cargo_info(&format!(
-            "Using JNI lib path from jlink runtime: {}",
-            jni_lib_path_from_jlink.display()
-        ));
-        jni_lib_path_from_jlink
-    } else if jni_lib_path_from_jdk.exists() {
-        print_cargo_info(&format!(
-            "Using JNI lib path from JDK: {}",
-            jni_lib_path_from_jdk.display()
-        ));
-        jni_lib_path_from_jdk
-    } else {
-        bail!(
-            "Could not find JNI 'server' library directory in jlink runtime ({}) or JDK ({}).",
-            jlink_runtime_path.display(),
-            java_home_path.display()
-        );
-    };
+    // On Windows, jvm.dll is in bin/server; on Linux/macOS, libjvm.so/dylib is in lib/server
+    let jni_lib_path = ["bin/server", "lib/server"]
+        .iter()
+        .flat_map(|subdir| {
+            [
+                ("jlink runtime (bin)", jlink_runtime_path.join(subdir)),
+                ("JDK", java_home_path.join(subdir)),
+            ]
+        })
+        .find(|(_name, path)| {
+            path.exists()
+                && (path.join("libjvm.dylib").exists()
+                    || path.join("libjvm.so").exists()
+                    || path.join("jvm.dll").exists())
+        })
+        .map(|(name, path)| {
+            print_cargo_info(&format!("Using JNI lib path from {}: {}", name, path.display()));
+            path
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not find JNI 'server' library directory in jlink runtime ({}) or JDK ({}).",
+                jlink_runtime_path.display(),
+                java_home_path.display()
+            )
+        })?;
     println!(
         "{}{}",
         CARGO_LINK_SEARCH_NATIVE_PREFIX,
@@ -99,7 +99,10 @@ pub fn setup_jni_linkage(
     }
 
     // Embed runtime rpath so the dynamic loader can find JNI lib at runtime
-    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", jni_lib_path.display());
+    // Windows uses DLL search path (app dir, PATH, etc.) — skip rpath
+    if env::consts::OS != "windows" {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", jni_lib_path.display());
+    }
 
     // --- Grobid JAR and Home Path for Runtime ---
     // These are passed as environment variables that the Rust application can use at runtime.

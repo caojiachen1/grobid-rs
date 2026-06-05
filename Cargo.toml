@@ -27,7 +27,7 @@ insta = { version = "1.36", features = ["redactions", "filters", "json"], option
 similar-asserts = { version = "1.5", optional = true }
 
 [features]
-default = ["cache", "format"]
+default = ["cache", "format", "cli", "parallel"]
 cache = []
 format = ["quick-xml", "serde", "serde_json"]
 cli = ["clap", "format", "indicatif", "tracing-subscriber"]

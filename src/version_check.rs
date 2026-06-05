@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::fs;
 
 /// Expected Grobid version that this library is built against
-pub const EXPECTED_GROBID_VERSION: &str = "0.8.2";
+pub const EXPECTED_GROBID_VERSION: &str = "0.9.1";
 
 /// Error type for version checking
 #[derive(Debug, thiserror::Error)]
@@ -89,11 +89,11 @@ mod tests {
         let mut file = fs::File::create(&properties_path).unwrap();
         
         // Create a test properties file
-        writeln!(file, "# Grobid properties\ngrobid.version=0.8.2\nsome.other.property=value").unwrap();
+        writeln!(file, "# Grobid properties\ngrobid.version=0.9.1\nsome.other.property=value").unwrap();
         
         // Test successful extraction
         let version = extract_grobid_version(temp_dir.path()).unwrap();
-        assert_eq!(version, "0.8.2");
+        assert_eq!(version, "0.9.1");
         
         // Test version check
         assert!(check_grobid_version(temp_dir.path()).is_ok());

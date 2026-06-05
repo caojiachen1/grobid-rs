@@ -18,7 +18,7 @@ fn initialize_grobid() {
     let grobid_home = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("target")
         .join("grobid_assets")
-        .join("grobid-0.8.2");
+        .join(format!("grobid-{}", grobid_rs::GROBID_VERSION));
 
     // Only initialize if not already initialized
     let config = GrobidConfig::new(grobid_home);

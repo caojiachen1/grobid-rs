@@ -144,8 +144,8 @@ fn copy_grobid_artifacts(
 }
 
 pub fn build_and_stage_grobid(
-    grobid_source_root: &Path, // e.g., .../assets_dir/grobid-0.8.2/source/grobid-0.8.2
-    target_grobid_deployment_dir: &Path, // e.g., .../assets_dir/grobid-0.8.2/deployment
+    grobid_source_root: &Path, // e.g., .../assets_dir/grobid-0.9.1/source/grobid-0.9.1
+    target_grobid_deployment_dir: &Path, // e.g., .../assets_dir/grobid-0.9.1/deployment
     java_home_path: &Path,
 ) -> Result<()> {
     let success_marker = target_grobid_deployment_dir.join(BUILD_SUCCESS_MARKER_FILE);

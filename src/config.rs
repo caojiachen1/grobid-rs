@@ -158,14 +158,14 @@ impl GrobidConfig {
         // Check Grobid version compatibility
         let properties_path = self
             .base_path
-            .join("grobid/grobid-home/config/grobid.properties");
+            .join("grobid-home/config/grobid.properties");
         if properties_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&properties_path) {
                 // Look for version line (grobid.version=X.Y.Z)
                 if let Some(line) = content.lines().find(|l| l.starts_with("grobid.version=")) {
                     if let Some(found_version) = line.strip_prefix("grobid.version=") {
                         // Compare with expected version
-                        let expected_version = "0.8.2"; // Hardcoded for now, should be a constant
+                        let expected_version = "0.9.1"; // Hardcoded for now, should be a constant
                         if found_version != expected_version {
                             return Err(GrobidError::Configuration(format!(
                                 "Grobid version mismatch: expected {}, found {}",

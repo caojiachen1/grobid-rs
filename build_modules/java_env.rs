@@ -2,6 +2,11 @@ use crate::build_modules::common::{
     bail, env, print_cargo_info, print_cargo_warning, PathBuf, Result, JAVA_HOME_ENV_VAR,
 };
 
+/// Check if a JDK bin directory contains javac (handles Windows .exe extension)
+fn has_javac(path: &PathBuf) -> bool {
+    path.join("bin/javac").exists() || path.join("bin/javac.exe").exists()
+}
+
 pub fn locate_java_home() -> Result<PathBuf> {
     print_cargo_info("Attempting to locate JAVA_HOME...");
     // 1. Check environment variable
@@ -9,27 +14,24 @@ pub fn locate_java_home() -> Result<PathBuf> {
         // Parse environment JAVA_HOME and adjust for macOS .jdk packaging if necessary
         let mut path = PathBuf::from(&java_home_env);
         let mac_jdk_home = path.join("Contents").join("Home");
-        if !path.join("bin/javac").exists() && mac_jdk_home.join("bin/javac").exists() {
+        if !has_javac(&path) && has_javac(&mac_jdk_home) {
             print_cargo_info(&format!(
                 "Using JAVA_HOME from environment with macOS .jdk structure: {}",
                 mac_jdk_home.display()
             ));
             path = mac_jdk_home;
         }
-        if path.exists() && path.join("bin/javac").exists() {
-            let javac_path = path.join("bin/javac");
-            if javac_path.exists() {
-                print_cargo_info(&format!(
-                    "Using JAVA_HOME from environment: {}",
-                    path.display()
-                ));
-                return Ok(path);
-            }
-            print_cargo_warning(&format!(
-                "Warning: JAVA_HOME environment variable set to '{}', but it doesn't seem to be a valid JDK path (missing bin/javac). Trying auto-detection...",
+        if path.exists() && has_javac(&path) {
+            print_cargo_info(&format!(
+                "Using JAVA_HOME from environment: {}",
                 path.display()
             ));
+            return Ok(path);
         }
+        print_cargo_warning(&format!(
+            "Warning: JAVA_HOME environment variable set to '{}', but it doesn't seem to be a valid JDK path (missing bin/javac). Trying auto-detection...",
+            path.display()
+        ));
     }
 
     // 2. Use java_locator if environment variable is not set or invalid
@@ -39,14 +41,14 @@ pub fn locate_java_home() -> Result<PathBuf> {
             // Adjust for macOS .jdk packaging if necessary
             let mut path = PathBuf::from(&path_str);
             let mac_jdk_home = path.join("Contents").join("Home");
-            if !path.join("bin/javac").exists() && mac_jdk_home.join("bin/javac").exists() {
+            if !has_javac(&path) && has_javac(&mac_jdk_home) {
                 print_cargo_info(&format!(
                     "Using JAVA_HOME from java_locator with macOS .jdk structure: {}",
                     mac_jdk_home.display()
                 ));
                 path = mac_jdk_home;
             }
-            if path.exists() && path.join("bin/javac").exists() {
+            if path.exists() && has_javac(&path) {
                 print_cargo_info(&format!(
                     "Located JAVA_HOME using java_locator: {}",
                     path.display()

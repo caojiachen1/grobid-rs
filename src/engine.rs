@@ -201,9 +201,11 @@ pub fn run_pdfalto(pdf: &Path, grobid_home: &Path) -> Result<PathBuf, GrobidErro
         _ => "lin-64",
     };
 
+    // Grobid 0.9.1+ places pdfalto in a nested pdfalto/ subdirectory
     let bin = grobid_home
         .join("pdfalto")
         .join(platform_name)
+        .join("pdfalto")
         .join(bin_name);
 
     if !bin.exists() {

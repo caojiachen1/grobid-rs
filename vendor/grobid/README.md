@@ -31,7 +31,7 @@ To update these files:
 
 ## Current Version
 
-These files are from Grobid version 0.8.2.
+These files are from Grobid version 0.9.1.
 
 ## License
 

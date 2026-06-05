@@ -18,7 +18,7 @@ Thumbs.db
 .vscode/
 
 # Large ZIP at project root
-/0.8.2.zip
+/0.9.1.zip
 *.zip
 *.tar.gz
 *.tar.xz
@@ -44,17 +44,21 @@ Thumbs.db
 !/vendor/jre/**
 
 # Exclude large files that exceed GitHub limits
-/vendor/grobid/grobid-core-0.8.2-onejar.jar
+/vendor/grobid/grobid-core-0.9.1-onejar.jar
 /vendor/grobid/grobid-home/models/patent/citation/model.wapiti
 # All large zip files are excluded
 /vendor/grobid/**/*.zip
 
 # But allow their compressed versions
-!/vendor/grobid/grobid-core-0.8.2-onejar.jar.zst
+!/vendor/grobid/grobid-core-0.9.1-onejar.jar.zst
 !/vendor/grobid/grobid-home/models/patent/citation/model.wapiti.zst
-# grobid-home-0.8.2.zip is not needed as the contents are already extracted
+# grobid-home-0.9.1.zip is not needed as the contents are already extracted
 
-# No longer using split files - we use zstd compression instead
+# Split .zst chunks (each <100 MB for GitHub's 100 MB per-file limit) — merged back by build.rs
+!/vendor/grobid/grobid-core-0.9.1-onejar.jar.zst.aa
+!/vendor/grobid/grobid-core-0.9.1-onejar.jar.zst.ab
 
 # Never commit staged build output anywhere else
 **/grobid_assets/
+
+*.pdf

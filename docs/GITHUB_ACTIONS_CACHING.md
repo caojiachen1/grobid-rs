@@ -31,7 +31,7 @@ Our workflow includes the following steps:
 
 ```yaml
 env:
-  GROBID_VERSION: '0.8.2'  # Used for JRE cache keys
+  GROBID_VERSION: '0.9.1'  # Used for JRE cache keys
 
 # Cache JRE runtime by platform
 - name: Cache JRE runtime
@@ -39,7 +39,7 @@ env:
   uses: actions/cache@v4
   with:
     path: ${{ github.workspace }}/vendor/jre/${{ matrix.os }}
-    key: jre-${{ runner.os }}-${{ matrix.target }}-0.8.2
+    key: jre-${{ runner.os }}-${{ matrix.target }}-0.9.1
 
 # Build minimal JRE via jlink only if not in cache
 - name: Build jlink image

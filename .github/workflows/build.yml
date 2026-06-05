@@ -8,7 +8,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  GROBID_VERSION: "0.8.2"
+  GROBID_VERSION: "0.9.1"
   CARGO_PROFILE_RELEASE_DEBUG: "false"
   # Skip Grobid assets for lint job
   SKIP_GROBID_ASSETS: "1"

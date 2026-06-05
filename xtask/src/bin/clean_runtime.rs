@@ -3,7 +3,7 @@ use std::{env, fs, path::PathBuf};
 // Constants from build_modules/common.rs
 const GROBID_RS_ASSETS_PATH_ENV_VAR: &str = "GROBID_RS_ASSETS_PATH";
 const GROBID_DIR_NAME_PREFIX: &str = "grobid-";
-const GROBID_VERSION: &str = "0.8.2";
+const GROBID_VERSION: &str = "0.9.1";
 const JLINK_RUNTIME_SUBDIR_NAME: &str = "runtime";
 const JRE_SUCCESS_MARKER_FILE: &str = ".jre_successful";
 

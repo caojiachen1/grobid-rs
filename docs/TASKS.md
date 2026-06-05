@@ -59,7 +59,7 @@ Focusing on improving first-time user experience and installation flow.
 - [ ] Implement pre-built asset download path
   - [ ] Detect `$CARGO_INSTALL` environment in build.rs
   - [ ] Add logic to download pre-built assets when no local JDK
-  - [ ] Create GitHub release with grobid-0.8.2.tar.zst bundle
+  - [ ] Create GitHub release with grobid-0.9.1.tar.zst bundle
   - [ ] Implement checksum verification for downloads
   - [ ] Add fallback mechanism for download failures
 

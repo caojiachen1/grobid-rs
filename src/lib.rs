@@ -95,7 +95,7 @@ pub enum LogLevel {
 }
 
 // Expected Grobid version - must match the version bundled with the library
-pub const GROBID_VERSION: &str = "0.8.2";
+pub const GROBID_VERSION: &str = "0.9.1";
 
 // JVM and Engine globals
 use jni::{objects::*, JavaVM};
@@ -109,9 +109,9 @@ static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Boot JVM + Grobid with the provided configuration.
 ///
-/// The configuration's `base_path` should point to a directory containing `runtime/` and `grobid/`.
-/// The `runtime` directory is expected to have a subdirectory named after the OS
-/// (e.g., "linux-latest", "macos-14", "windows-latest") which is created by the build script.
+/// The configuration's `base_path` should point to a directory containing `grobid-home/`,
+/// the Grobid onejar, and `runtime/`.
+/// The `runtime` directory contains the jlink JRE and is created by the build script.
 ///
 /// # Examples
 ///
@@ -143,22 +143,15 @@ pub fn init(config: &config::GrobidConfig) -> Result<(), errors::GrobidError> {
         )));
     }
 
-    // Get path to grobid
-    let grobid_path = config.base_path.join("grobid");
-    if !grobid_path.exists() {
-        return Err(errors::GrobidError::Configuration(format!(
-            "Grobid directory not found: {}",
-            grobid_path.display()
-        )));
-    }
-
     // Prepare JVM arguments
     let mut jvm_args = Vec::new();
 
-    // Set classpath
-    let grobid_home = grobid_path.join("grobid-home");
-    let grobid_core = grobid_path.join("grobid-core");
-    let grobid_core_jar = grobid_core.join("build/libs/grobid-core-0.8.2-onejar.jar");
+    // Set classpath — build script stages files directly under base_path:
+    //   base_path/grobid-home/
+    //   base_path/grobid-core-0.9.1-onejar.jar
+    //   base_path/runtime/
+    let grobid_home = config.base_path.join("grobid-home");
+    let grobid_core_jar = config.base_path.join("grobid-core-0.9.1-onejar.jar");
 
     if !grobid_core_jar.exists() {
         return Err(errors::GrobidError::Configuration(format!(
@@ -171,7 +164,8 @@ pub fn init(config: &config::GrobidConfig) -> Result<(), errors::GrobidError> {
     jvm_args.push(classpath);
 
     // Set system properties
-    jvm_args.push(format!("-Dgrobid.home={}", grobid_home.display()));
+    jvm_args.push(format!("-Dorg.grobid.home={}", grobid_home.display()));
+    jvm_args.push(format!("-Dorg.grobid.config={}", grobid_home.join("config/grobid.yaml").display()));
 
     // Add custom system properties
     for (key, value) in &config.system_properties {
@@ -186,12 +180,13 @@ pub fn init(config: &config::GrobidConfig) -> Result<(), errors::GrobidError> {
         jvm_args.push(option.clone());
     }
 
-    // Create JVM arguments for jni crate
-    let options_str = jvm_args.join(" ");
-    let jni_args = jni::InitArgsBuilder::new()
-        .version(jni::JNIVersion::V8)
-        .option(&options_str)
-        .build()
+    // Create JVM arguments for jni crate — each option must be passed separately
+    let mut jni_args_builder = jni::InitArgsBuilder::new()
+        .version(jni::JNIVersion::V8);
+    for arg in &jvm_args {
+        jni_args_builder = jni_args_builder.option(arg);
+    }
+    let jni_args = jni_args_builder.build()
         .map_err(|e| {
             errors::GrobidError::JvmInitialization(format!("Failed to build JVM args: {}", e))
         })?;
@@ -219,13 +214,13 @@ pub fn init(config: &config::GrobidConfig) -> Result<(), errors::GrobidError> {
         .find_class("org/grobid/core/engines/Engine")
         .map_err(errors::GrobidError::Jni)?;
 
-    // Get singleton instance
+    // Get singleton instance — Grobid 0.9.1's getEngine requires a boolean parameter
     let engine_obj = env
         .call_static_method(
             engine_class,
             "getEngine",
-            "()Lorg/grobid/core/engines/Engine;",
-            &[],
+            "(Z)Lorg/grobid/core/engines/Engine;",
+            &[JValue::Bool(true.into())],
         )
         .map_err(errors::GrobidError::Jni)?
         .l()
